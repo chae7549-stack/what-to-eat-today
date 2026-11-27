@@ -3,7 +3,7 @@
    - 모드 1: 냉장고 재료 매칭 (보유 재료로 만들 수 있는 요리 추천)
    - 모드 2: 기분·예산·방식·카테고리 룰렛 (오늘 뭐 먹지?)
    - 레시피: 직접 만든 큐레이션 57개 + 만개의레시피(10000recipe.com)에서
-             수집한 집밥 레시피 1,100여 개 (data/recipes-data.js)
+             수집한 집밥 레시피 1,400여 개 + 배달·외식 메뉴 150개 (data/recipes-data.js)
    - 공유: Web Share API → 클립보드 순으로 폴백
    ========================================================================== */
 
@@ -36,7 +36,11 @@
     { id: "bean", label: "콩나물", emoji: "🌱", group: "채소·버섯", common: true, aliases: ["콩나물"] },
     { id: "fishcake", label: "어묵", emoji: "🍢", group: "고기·해산물", common: true, aliases: ["어묵", "오뎅"] },
     { id: "mushroom", label: "버섯", emoji: "🍄", group: "채소·버섯", common: true, aliases: ["버섯", "표고버섯", "느타리"] },
-    { id: "sauce", label: "장류·양념", emoji: "🥫", group: "양념·소스", common: true, pantry: true, aliases: ["간장", "고추장", "된장", "고춧가루"] },
+    { id: "ganjang_jin", label: "진간장", emoji: "🍶", group: "장류·소스", common: true, pantry: true, aliases: ["진간장", "간장", "맛간장"] },
+    { id: "gochujang", label: "고추장", emoji: "🌶️", group: "장류·소스", common: true, pantry: true, aliases: ["고추장", "초고추장"] },
+    { id: "doenjang", label: "된장", emoji: "🫘", group: "장류·소스", common: true, pantry: true, aliases: ["된장"] },
+    { id: "gochugaru", label: "고춧가루", emoji: "🌶️", group: "양념·향신", common: true, pantry: true, aliases: ["고춧가루", "고추가루"] },
+    { id: "vinegar", label: "양조식초", emoji: "🍶", group: "식초·오일", pantry: true, aliases: ["양조식초", "식초"] },
     { id: "milk", label: "우유", emoji: "🥛", group: "빵·유제품", aliases: ["우유"] },
     { id: "butter", label: "버터", emoji: "🧈", group: "빵·유제품", aliases: ["버터"] },
     { id: "bread", label: "식빵", emoji: "🍞", group: "빵·유제품", aliases: ["식빵", "빵"] },
@@ -79,15 +83,27 @@
 
   // 기본으로 보여줄 재료 칩 순서 (자주 쓰는 순)
   var COMMON_ORDER = [
-    "egg", "kimchi", "tofu", "rice", "pa", "onion", "garlic", "ramen", "pasta", "tteok",
-    "potato", "pork", "chicken", "ham", "tuna", "fishcake", "bean", "mushroom", "cheese",
-    "flour", "curry", "sauce", "salt", "sugar", "pepper", "oil", "sesame_oil",
+    "egg", "kimchi", "tofu", "rice", "pa", "onion", "garlic", "potato", "pork", "chicken",
+    "ham", "tuna", "fishcake", "bean", "mushroom", "cheese", "milk", "butter", "bread",
+    "ramen", "pasta", "tteok", "dumpling", "flour", "curry",
+    "ganjang_jin", "gochujang", "doenjang", "gochugaru", "salt", "sugar", "pepper",
+    "oil", "sesame_oil", "sesame", "mirin", "vinegar", "mayo", "ketchup",
   ];
+
+  var GROUP_EMOJI = {
+    "채소·버섯": "🥬", "고기·해산물": "🥩", "계란·두부·콩": "🥚", "곡류·면·떡": "🍚",
+    "빵·유제품": "🧀", "장류·소스": "🥫", "식초·오일": "🫗", "양념·향신": "🧂",
+    "과일·기타": "🍎",
+  };
 
   var GROUPS = [];
   INGREDIENTS.forEach(function (it) {
     if (GROUPS.indexOf(it.group) === -1) GROUPS.push(it.group);
   });
+
+  // 재료 탭: 자주 쓰는 + 그룹별
+  var ING_TABS = [{ id: "common", label: "자주 쓰는", emoji: "⭐" }];
+  GROUPS.forEach(function (g) { ING_TABS.push({ id: g, label: g, emoji: GROUP_EMOJI[g] || "🍴" }); });
 
   /* ------------------------------------------------------------------
      2. 요리 데이터
@@ -110,11 +126,10 @@
     "pork-cabbage": "볶음·구이", "french-toast": "양식·기타", "ham-cheese-sandwich": "양식·기타",
     "bibimbap": "밥·죽", "eomuk-bokkeum": "볶음·구이", "potato-soup": "양식·기타",
     "dubu-butter": "볶음·구이", "tuna-potato-jorim": "반찬", "tteokguk": "국·찌개",
-    "out-chicken": "분식·야식", "out-pizza": "양식·기타", "out-jjajang": "면·파스타",
-    "out-jjambbong": "면·파스타", "out-samgyeopsal": "볶음·구이", "out-maratang": "면·파스타",
-    "out-gimbap": "분식·야식", "out-pho": "면·파스타", "out-burger": "양식·기타",
-    "out-sushi": "양식·기타", "out-naengmyeon": "면·파스타", "out-donkatsu": "양식·기타",
-    "out-gukbap": "국·찌개", "out-jokbal": "볶음·구이", "out-salad": "양식·기타",
+    "balsamic-salad": "양식·기타", "coconut-noodle": "면·파스타", "barley-bibimbap": "밥·죽",
+    "oat-banana-porridge": "양식·기타", "duck-bokkeum": "볶음·구이", "gopchang-bokkeum": "볶음·구이",
+    "edamame-muchim": "반찬", "mango-smoothie": "양식·기타", "hwanggi-baeksuk": "국·찌개",
+    "oi-chomuchim": "반찬",
   };
 
   var CATEGORIES = [
@@ -128,6 +143,15 @@
     { id: "분식·야식", label: "분식·야식" },
     { id: "양식·기타", label: "양식·기타" },
   ];
+
+  // 배달·외식 메뉴 종류 (배민 카테고리) — DB.out 의 cat 값에서 만든다
+  var OUT_CATS = [{ id: "all", label: "전체" }];
+  var OUT_EMOJI = {
+    "치킨": "🍗", "피자": "🍕", "중식": "🥟", "한식·찌개": "🍲", "덮밥·비빔밥": "🍚",
+    "족발·보쌈": "🐷", "일식·돈까스": "🍣", "면·국수": "🍜", "분식·떡볶이": "🌶️",
+    "야식·안주": "🍢", "패스트푸드": "🍔", "아시안": "🍜", "샐러드·건강식": "🥗",
+    "카페·디저트": "☕",
+  };
 
   var DISHES = [
     {
@@ -184,7 +208,7 @@
     },
     {
       id: "ganjang-gyeran-bap", name: "간장계란밥", emoji: "🍚", time: 5, level: 1,
-      req: ["egg", "rice", "sauce"], opt: ["butter", "pa"],
+      req: ["egg", "rice", "ganjang_jin"], opt: ["butter", "pa"],
       moods: ["alone", "night"], budget: "low", method: "home",
       steps: [
         "따뜻한 밥에 계란 프라이를 올려 주세요.",
@@ -223,7 +247,7 @@
     },
     {
       id: "doenjang-jjigae", name: "된장찌개", emoji: "🍲", time: 25, level: 2,
-      req: ["tofu", "potato", "onion", "sauce"], opt: ["mushroom", "pa"],
+      req: ["tofu", "potato", "onion", "doenjang"], opt: ["mushroom", "pa"],
       moods: ["hearty"], budget: "mid", method: "home",
       steps: [
         "감자와 양파, 두부를 한입 크기로 썰어 주세요.",
@@ -288,7 +312,7 @@
     },
     {
       id: "tteokbokki", name: "떡볶이", emoji: "🍡", time: 15, level: 1,
-      req: ["tteok", "sauce"], opt: ["egg", "fishcake", "pa", "cheese"],
+      req: ["tteok", "gochujang"], opt: ["egg", "fishcake", "pa", "cheese"],
       moods: ["night", "hearty"], budget: "low", method: "home",
       steps: [
         "떡을 물에 5분 담가 말랑하게 해 주세요.",
@@ -296,12 +320,12 @@
         "떡과 어묵, 대파를 넣고 8분 졸여 주세요.",
         "불을 줄이고 치즈나 삶은 계란을 올려요.",
       ],
-      tip: "떡을 미리 불리면 쫄깃함이 살아요.",
+      tip: "떡을 미지근한 물에 5분 불리면 쫄깃함이 살아요. 고추장은 멸치 육수에 풀어야 짜지 않아요.",
       comment: "야식의 왕, 실패 없는 떡볶이 🌶️",
     },
     {
       id: "rabokki", name: "라볶이", emoji: "🍜", time: 18, level: 1,
-      req: ["tteok", "ramen", "sauce"], opt: ["fishcake", "egg", "cheese"],
+      req: ["tteok", "ramen", "gochujang"], opt: ["fishcake", "egg", "cheese"],
       moods: ["night", "hearty"], budget: "low", method: "home",
       steps: [
         "물 2컵에 고추장 2큰술, 설탕 1큰술을 풀어 끓여요.",
@@ -314,7 +338,7 @@
     },
     {
       id: "jeyuk", name: "제육볶음", emoji: "🥘", time: 20, level: 2,
-      req: ["pork", "onion", "sauce"], opt: ["garlic", "pa", "cabbage"],
+      req: ["pork", "onion", "gochujang"], opt: ["garlic", "pa", "cabbage"],
       moods: ["hearty"], budget: "mid", method: "home",
       steps: [
         "돼지고기에 고추장 2큰술, 간장 1큰술, 설탕 1큰술로 밑간해요.",
@@ -426,7 +450,7 @@
         "약불에서 저어가며 6분 익혀요.",
         "대파를 뿌리고 뚜껑을 덮어 1분 뜸 들여요.",
       ],
-      tip: "약불에서 천천히 익혀야 부드러워요.",
+      tip: "약불에서 천천히 익혀야 부드러워요. 뚜껑을 덮고 익히면 구멍이 적게 나요.",
       comment: "숟가락으로 떠먹는 폭신한 계란찜 🥚",
     },
     {
@@ -465,12 +489,12 @@
         "참치캔과 두부를 넣고 5분 더 끓여요.",
         "대파와 후추를 뿌려 마무리!",
       ],
-      tip: "참치 기름을 빼면 국물이 깔끔해요.",
+      tip: "참치 기름을 빼면 국물이 깔끔해요. 참치는 마지막에 넣어야 부서지지 않아요.",
       comment: "고기 없이도 깊은 맛, 참치의 힘 🐟",
     },
     {
       id: "dubu-jorim", name: "두부조림", emoji: "🍲", time: 15, level: 1,
-      req: ["tofu", "sauce"], opt: ["pa", "onion"],
+      req: ["tofu", "ganjang_jin"], opt: ["pa", "onion"],
       moods: ["light", "alone"], budget: "low", method: "home",
       steps: [
         "두부를 도톰하게 썰어 물기를 빼요.",
@@ -496,7 +520,7 @@
     },
     {
       id: "gamja-jorim", name: "감자조림", emoji: "🥔", time: 20, level: 1,
-      req: ["potato", "sauce"], opt: ["onion", "carrot"],
+      req: ["potato", "ganjang_jin"], opt: ["onion", "carrot"],
       moods: ["light", "alone"], budget: "low", method: "home",
       steps: [
         "감자를 한입 크기로 썰어 물기를 빼요.",
@@ -543,12 +567,12 @@
         "밥을 넣고 간장 1큰술로 간하며 볶아요.",
         "계란을 풀어 넣고 한 번 더 볶으면 완성!",
       ],
-      tip: "밥은 찬밥이 고슬고슬해서 좋아요.",
+      tip: "밥은 찬밥이 고슬고슬해서 좋아요. 닭가슴살은 우유에 20분 재우면 퍽퍽하지 않아요.",
       comment: "단백질 가득, 다이어터 볶음밥 🍗",
     },
     {
       id: "oi-muchim", name: "오이무침", emoji: "🥒", time: 8, level: 1,
-      req: ["cucumber", "garlic", "sauce"], opt: ["onion"],
+      req: ["cucumber", "garlic", "gochugaru"], opt: ["onion"],
       moods: ["light", "hangover"], budget: "low", method: "home",
       steps: [
         "오이를 반달 모양으로 썰어 소금에 5분 절여요.",
@@ -556,12 +580,12 @@
         "고춧가루, 다진 마늘, 식초, 설탕으로 무쳐요.",
         "통깨를 뿌려 완성!",
       ],
-      tip: "절인 오이는 아삭함이 살아 있어요.",
+      tip: "절인 오이는 아삭함이 살아 있어요. 소금에 5분 절인 뒤 물기를 빼야 양념이 묽지 않아요.",
       comment: "입맛 없을 때 딱, 새콤달콤 🥒",
     },
     {
       id: "pork-cabbage", name: "돼지고기 양배추볶음", emoji: "🥬", time: 15, level: 2,
-      req: ["pork", "cabbage", "sauce"], opt: ["pa"],
+      req: ["pork", "cabbage", "gochujang"], opt: ["pa"],
       moods: ["hearty"], budget: "mid", method: "home",
       steps: [
         "양배추를 한입 크기로 썰어 주세요.",
@@ -600,7 +624,7 @@
     },
     {
       id: "bibimbap", name: "비빔밥", emoji: "🍚", time: 15, level: 1,
-      req: ["rice", "egg", "sauce"], opt: ["bean", "cucumber", "carrot", "mushroom"],
+      req: ["rice", "egg", "gochujang"], opt: ["bean", "cucumber", "carrot", "mushroom"],
       moods: ["hearty", "hangover"], budget: "low", method: "home",
       steps: [
         "냉장고 채소를 채 썰어 살짝 볶아 주세요.",
@@ -613,7 +637,7 @@
     },
     {
       id: "eomuk-bokkeum", name: "어묵볶음", emoji: "🍢", time: 12, level: 1,
-      req: ["fishcake", "sauce"], opt: ["onion", "pa"],
+      req: ["fishcake", "ganjang_jin"], opt: ["onion", "pa"],
       moods: ["night", "alone"], budget: "low", method: "home",
       steps: [
         "어묵을 먹기 좋게 썰어 끓는 물에 데쳐요.",
@@ -639,7 +663,7 @@
     },
     {
       id: "dubu-butter", name: "두부버터구이", emoji: "🧈", time: 15, level: 1,
-      req: ["tofu", "butter"], opt: ["sauce", "pa"],
+      req: ["tofu", "butter"], opt: ["ganjang_jin", "pa"],
       moods: ["light", "alone"], budget: "low", method: "home",
       steps: [
         "두부 물기를 빼고 도톰하게 썰어요.",
@@ -652,7 +676,7 @@
     },
     {
       id: "tuna-potato-jorim", name: "참치감자조림", emoji: "🍚", time: 20, level: 2,
-      req: ["tuna", "potato", "sauce"], opt: ["onion"],
+      req: ["tuna", "potato", "ganjang_jin"], opt: ["onion"],
       moods: ["alone"], budget: "low", method: "home",
       steps: [
         "감자를 썰어 기름에 살짝 볶아요.",
@@ -665,7 +689,7 @@
     },
     {
       id: "tteokguk", name: "떡국", emoji: "🍡", time: 20, level: 1,
-      req: ["tteok", "egg", "sauce"], opt: ["pa", "mushroom"],
+      req: ["tteok", "egg", "ganjang_guk"], opt: ["pa", "mushroom"],
       moods: ["hangover", "hearty"], budget: "low", method: "home",
       steps: [
         "떡을 물에 10분 담가 불려요.",
@@ -673,101 +697,147 @@
         "떡을 넣고 떠오를 때까지 5분 끓여요.",
         "계란 지단과 대파를 올려 완성!",
       ],
-      tip: "떡이 떠오르면 다 익은 거예요.",
+      tip: "떡이 떠오르면 다 익은 거예요. 떡은 찬물에 10분 불려야 국물이 텁텁하지 않아요.",
       comment: "명절 아니어도 좋은 떡국 🍡",
     },
 
-    /* -------------------- 배달·외식 메뉴 -------------------- */
+    /* -------------------- 세분화 재료 큐레이션 -------------------- */
     {
-      id: "out-chicken", name: "치킨", emoji: "🍗", price: "18,000원~", level: 1,
-      req: [], opt: [], moods: ["hearty", "night"], budget: "mid", method: "out",
-      tip: "반반으로 주문하면 배달비가 아깝지 않아요.",
-      comment: "콜라는 필수! 오늘은 치킨 🍗",
+      id: "balsamic-salad", name: "발사믹 샐러드", emoji: "🥗", time: 10, level: 1,
+      req: ["sangchu", "tomato", "balsamic"], opt: ["olive_oil", "cheese", "onion", "nut"],
+      moods: ["light"], budget: "low", method: "home",
+      steps: [
+        "상추와 토마토를 먹기 좋게 씻어 물기를 완전히 빼 주세요.",
+        "올리브유 2큰술, 발사믹식초 1큰술, 소금·후추를 섞어 드레싱을 만들어요.",
+        "채소를 그릇에 담고 드레싱을 먹기 직전에 둘러 주세요.",
+        "치즈나 견과류가 있으면 부숴서 올리면 고소함이 더해져요.",
+      ],
+      tip: "발사믹식초는 올리브유와 1:2로 섞어야 산미가 부드러워져요. 채소 물기를 빼야 드레싱이 묽지 않아요.",
+      comment: "10분이면 완성되는 산뜻한 한 접시 🥗",
     },
     {
-      id: "out-pizza", name: "피자", emoji: "🍕", price: "15,000원~", level: 1,
-      req: [], opt: [], moods: ["hearty", "night"], budget: "mid", method: "out",
-      tip: "포장 주문이 보통 20~30% 저렴해요.",
-      comment: "한 판이면 온 가족 든든 🍕",
+      id: "coconut-noodle", name: "집에서 만드는 쌀국수", emoji: "🍜", time: 25, level: 2,
+      req: ["rice_noodle", "chicken", "pa", "onion"], opt: ["lemon_juice", "gochu", "fish_sauce", "cilantro"],
+      moods: ["hangover", "light"], budget: "mid", method: "home",
+      steps: [
+        "닭고기와 양파, 대파를 넣고 20분 끓여 육수를 만들어요.",
+        "쌀국수면은 미지근한 물에 10분 불려 주세요.",
+        "육수를 체에 거르고 소금과 액젓으로 간을 맞춰요.",
+        "면을 끓는 물에 30초 데쳐 그릇에 담고 육수를 부어요.",
+        "레몬즙과 고수를 곁들이면 베트남식 완성!",
+      ],
+      tip: "쌀국수면은 불린 뒤 데쳐야 부드러워요. 육수는 양파를 구워 넣어야 향이 깊어져요.",
+      comment: "집에서 즐기는 베트남 한 그릇 🍜",
     },
     {
-      id: "out-jjajang", name: "짜장면", emoji: "🍜", price: "7,000원~", level: 1,
-      req: [], opt: [], moods: ["alone", "hearty"], budget: "low", method: "out",
-      tip: "군만두 하나 추가하면 완벽한 세트예요.",
-      comment: "후루룩 넘어가는 든든한 한 그릇 🍜",
+      id: "barley-bibimbap", name: "보리비빔밥", emoji: "🍚", time: 25, level: 1,
+      req: ["barley", "rice", "buchu", "gochujang"], opt: ["egg", "carrot", "sesame_oil"],
+      moods: ["light", "hearty"], budget: "low", method: "home",
+      steps: [
+        "보리는 30분 불려 밥과 함께 고슬고슬하게 지어요.",
+        "부추와 당근은 잘게 썰어 참기름에 살짝 볶아요.",
+        "밥을 그릇에 담고 채소를 돌려 담아 주세요.",
+        "고추장과 참기름을 넣고 계란후라이를 올려 비벼 드세요.",
+      ],
+      tip: "보리는 불리는 시간이 짧으면 딱딱해요. 30분 이상 불려야 부드럽게 씹혀요.",
+      comment: "씹는 맛이 살아 있는 보리밥 한 그릇 🍚",
     },
     {
-      id: "out-jjambbong", name: "짬뽕", emoji: "🍜", price: "8,000원~", level: 1,
-      req: [], opt: [], moods: ["hangover", "hearty"], budget: "low", method: "out",
-      tip: "해장엔 짬뽕 국물이 최고예요.",
-      comment: "얼큰한 국물이 속을 풀어줘요 🌶️",
+      id: "oat-banana-porridge", name: "오트밀 바나나죽", emoji: "🥣", time: 8, level: 1,
+      req: ["oat", "milk", "banana"], opt: ["honey", "nut", "blueberry"],
+      moods: ["light"], budget: "low", method: "home",
+      steps: [
+        "우유 1컵을 냄비에 붓고 약불로 데워요.",
+        "오트밀 3큰술을 넣고 3분간 천천히 저어요.",
+        "바나나를 으깨 넣고 1분 더 끓이면 완성!",
+        "꿀이나 견과류를 올려 마무리해요.",
+      ],
+      tip: "우유가 끓어 넘치지 않게 약불에서 저어 주세요. 오트밀은 1분만 더 두면 걸쭉해져요.",
+      comment: "8분이면 든든한 아침 🥣",
     },
     {
-      id: "out-samgyeopsal", name: "삼겹살", emoji: "🥓", price: "12,000원/인~", level: 1,
-      req: [], opt: [], moods: ["hearty"], budget: "high", method: "out",
-      tip: "고기집은 보통 1인분 200g 기준이에요.",
-      comment: "오늘은 고기다! 🥓",
+      id: "duck-bokkeum", name: "오리 주물럭", emoji: "🦆", time: 20, level: 2,
+      req: ["duck", "onion", "pa", "gochujang"], opt: ["garlic", "sugar", "sesame_oil"],
+      moods: ["hearty", "night"], budget: "mid", method: "home",
+      steps: [
+        "오리고기는 한입 크기로 썰어 물기를 닦아요.",
+        "고추장 2큰술, 간장 1큰술, 설탕 1큰술, 다진 마늘을 섞어요.",
+        "고기에 양념을 버무려 15분 재워 주세요.",
+        "센 불에 팬을 달군 뒤 고기를 볶아요.",
+        "양파와 대파를 넣고 2분 더 볶아 완성!",
+      ],
+      tip: "오리는 기름이 많아 양파를 먼저 볶아 기름을 입히면 느끼하지 않아요.",
+      comment: "밥도 술도 부르는 오리 주물럭 🦆",
     },
     {
-      id: "out-maratang", name: "마라탕", emoji: "🍲", price: "12,000원~", level: 1,
-      req: [], opt: [], moods: ["hearty", "night"], budget: "mid", method: "out",
-      tip: "재료를 많이 담으면 금액이 확 올라가요.",
-      comment: "중독성 있는 얼얼함 🍲",
+      id: "gopchang-bokkeum", name: "곱창 볶음", emoji: "🍢", time: 25, level: 3,
+      req: ["gopchang", "onion", "pa", "gochugaru"], opt: ["garlic", "sugar", "sesame_oil"],
+      moods: ["night", "hearty"], budget: "mid", method: "home",
+      steps: [
+        "곱창은 밀가루로 주물러 씻고 물기를 빼 주세요.",
+        "고춧가루 2큰술, 간장 1큰술, 설탕 반 큰술로 양념을 만들어요.",
+        "센 불에 곱창을 볶아 기름을 내요.",
+        "양파와 대파, 다진 마늘을 넣고 함께 볶아요.",
+        "양념을 넣고 2분 더 볶은 뒤 참기름을 두르면 완성!",
+      ],
+      tip: "곱창은 밀가루로 주물러야 잡내가 빠져요. 센 불에 짧게 볶아야 질기지 않아요.",
+      comment: "야식엔 역시 곱창 볶음 🍢",
     },
     {
-      id: "out-gimbap", name: "김밥", emoji: "🍙", price: "3,500원~", level: 1,
-      req: [], opt: [], moods: ["alone", "light"], budget: "low", method: "out",
-      tip: "라면 하나 곁들이면 든든해요.",
-      comment: "가볍게 한 끼, 부담 없는 김밥 🍙",
+      id: "edamame-muchim", name: "마늘 에다마메", emoji: "🫛", time: 10, level: 1,
+      req: ["edamame", "garlic"], opt: ["salt", "sesame_oil", "gochu"],
+      moods: ["light", "night"], budget: "low", method: "home",
+      steps: [
+        "에다마메는 끓는 물에 소금을 넣고 3분 삶아요.",
+        "물을 버리고 찬물에 헹구지 않고 그대로 두세요.",
+        "다진 마늘과 소금, 참기름을 넣고 버무려요.",
+        "청양고추를 송송 썰어 올리면 칼칼함이 더해져요.",
+      ],
+      tip: "삶은 뒤 바로 물을 빼야 콩알이 촉촉해요. 참기름은 불을 끈 뒤에 넣어야 향이 살아요.",
+      comment: "한 알씩 집어 먹는 재미 🫛",
     },
     {
-      id: "out-pho", name: "쌀국수", emoji: "🍜", price: "9,000원~", level: 1,
-      req: [], opt: [], moods: ["hangover", "light"], budget: "low", method: "out",
-      tip: "고수는 빼달라고 미리 말해요.",
-      comment: "깔끔한 국물로 속을 달래요 🍜",
+      id: "mango-smoothie", name: "망고 스무디", emoji: "🥭", time: 5, level: 1,
+      req: ["mango", "yogurt", "milk"], opt: ["honey", "banana"],
+      moods: ["light"], budget: "low", method: "home",
+      steps: [
+        "망고는 껍질을 벗겨 한입 크기로 썰어 얼려 두세요.",
+        "믹서에 얼린 망고와 요거트, 우유를 넣어요.",
+        "30초 갈고 꿀이나 바나나를 더해 한 번 더 갈아요.",
+        "차가운 컵에 담아 바로 드세요.",
+      ],
+      tip: "과일을 얼려 쓰면 얼음을 넣지 않아도 되고 맛이 진해요. 우유를 조금씩 넣어 농도를 맞추세요.",
+      comment: "카페 부럽지 않은 한 잔 🥭",
     },
     {
-      id: "out-burger", name: "햄버거", emoji: "🍔", price: "8,000원~", level: 1,
-      req: [], opt: [], moods: ["alone", "night"], budget: "low", method: "out",
-      tip: "세트로 시키면 감튀까지 든든해요.",
-      comment: "한입 베어물면 행복 🍔",
+      id: "hwanggi-baeksuk", name: "황기 닭백숙", emoji: "🍲", time: 70, level: 2,
+      req: ["chicken", "hwanggi", "garlic", "rice"], opt: ["insam", "daechu", "pa", "salt"],
+      moods: ["hearty"], budget: "mid", method: "home",
+      steps: [
+        "닭은 찬물에 30분 담가 핏물을 빼요.",
+        "황기와 대추, 통마늘을 냄비에 넣고 물 2L를 부어요.",
+        "닭을 넣고 끓어오르면 중불로 줄여 50분 끓여요.",
+        "찹쌀이나 밥을 넣고 10분 더 끓이면 걸쭉해져요.",
+        "소금으로 간을 맞추고 대파를 올려 마무리해요.",
+      ],
+      tip: "황기는 오래 끓일수록 구수한 향이 우러나요. 닭은 젓가락이 쑥 들어가면 다 익은 거예요.",
+      comment: "기운 나는 날의 보양식 🍲",
     },
     {
-      id: "out-sushi", name: "초밥", emoji: "🍣", price: "15,000원~", level: 1,
-      req: [], opt: [], moods: ["hearty"], budget: "high", method: "out",
-      tip: "런치 세트가 저녁보다 저렴해요.",
-      comment: "오늘은 나에게 선물 🍣",
+      id: "oi-chomuchim", name: "오이 초무침", emoji: "🥒", time: 10, level: 1,
+      req: ["cucumber", "brown_vinegar", "sugar"], opt: ["gochugaru", "garlic", "sesame"],
+      moods: ["light", "hangover"], budget: "low", method: "home",
+      steps: [
+        "오이는 어슷하게 썰어 소금에 5분 절여요.",
+        "물기를 꼭 짜고 그릇에 담아요.",
+        "현미식초 2큰술, 설탕 1큰술, 소금 한 꼬집을 섞어 부어요.",
+        "고춧가루와 다진 마늘을 넣고 조물조물 버무려요.",
+        "통깨를 뿌려 마무리하면 완성!",
+      ],
+      tip: "현미식초는 양조식초보다 향이 부드러워 초무침에 잘 어울려요. 절인 오이 물기를 빼야 묽지 않아요.",
+      comment: "입맛 돋우는 새콤한 반찬 🥒",
     },
-    {
-      id: "out-naengmyeon", name: "냉면", emoji: "🍜", price: "10,000원~", level: 1,
-      req: [], opt: [], moods: ["hangover", "light"], budget: "mid", method: "out",
-      tip: "식초와 겨자를 넣으면 더 시원해요.",
-      comment: "시원한 한 그릇으로 리셋 🧊",
-    },
-    {
-      id: "out-donkatsu", name: "돈까스", emoji: "🍛", price: "10,000원~", level: 1,
-      req: [], opt: [], moods: ["hearty"], budget: "low", method: "out",
-      tip: "소스는 뿌리지 말고 찍어 먹는 게 바삭해요.",
-      comment: "바삭함이 생명, 돈까스 🍛",
-    },
-    {
-      id: "out-gukbap", name: "국밥", emoji: "🍲", price: "9,000원~", level: 1,
-      req: [], opt: [], moods: ["hangover", "hearty"], budget: "low", method: "out",
-      tip: "수육 한 접시 추가하면 든든해요.",
-      comment: "든든하고 따뜻한 국밥 한 그릇 🍲",
-    },
-    {
-      id: "out-jokbal", name: "족발", emoji: "🍖", price: "30,000원~", level: 1,
-      req: [], opt: [], moods: ["night", "hearty"], budget: "high", method: "out",
-      tip: "막국수는 세트로 시키면 저렴해요.",
-      comment: "야식의 끝판왕, 족발 🍖",
-    },
-    {
-      id: "out-salad", name: "샐러드", emoji: "🥗", price: "9,000원~", level: 1,
-      req: [], opt: [], moods: ["light"], budget: "low", method: "out",
-      tip: "닭가슴살 토핑을 더하면 든든해요.",
-      comment: "가볍게 먹고 싶은 날 🥗",
-    },
+
   ];
 
   var RECIPES = [];
@@ -790,6 +860,22 @@
       });
     });
 
+    // 배달·외식 메뉴 (data/recipes-data.js 의 out 배열 = 배민 카테고리)
+    var outs = (DB && DB.out) || [];
+    outs.forEach(function (m) {
+      RECIPES.push({
+        id: m.id, name: m.name, emoji: m.emoji || "🛵",
+        cat: m.cat || "배달·외식",
+        time: 0, level: 1, servings: "",
+        moods: m.moods || ["hearty"], budget: m.budget || "mid",
+        method: "out",
+        req: [], opt: [], steps: [], ing: [],
+        tip: m.tip || "", comment: m.note || "", price: m.price || "",
+        bracket: m.bracket || "", priceMin: m.priceMin || 0, priceMax: m.priceMax || 0,
+        src: "", author: "", reviews: 0, rating: 0, curated: false,
+      });
+    });
+
     var collected = (DB && DB.recipes) || [];
     collected.forEach(function (r) {
       var ing = (r.ing || []).map(function (row) {
@@ -803,7 +889,7 @@
         method: "home",
         req: r.req || [], opt: r.opt || [],
         steps: r.steps || [], ing: ing,
-        tip: "", comment: "", price: "",
+        tip: r.tip || "", comment: "", price: "",
         src: r.src || "", author: r.author || "",
         reviews: r.reviews || 0, rating: r.rating || 0, curated: false,
       });
@@ -824,18 +910,29 @@
 
   var ALLDISH = RECIPES; // 배달·외식까지 포함한 전체 (룰렛용)
 
+  // 배달·외식 종류 탭 (데이터에 있는 순서 그대로)
+  (function buildOutCats() {
+    ALLDISH.forEach(function (d) {
+      if (d.method !== "out") return;
+      for (var i = 0; i < OUT_CATS.length; i++) if (OUT_CATS[i].id === d.cat) return;
+      OUT_CATS.push({ id: d.cat, label: d.cat });
+    });
+  })();
+
   /* ------------------------------------------------------------------
      3. 상태
      ------------------------------------------------------------------ */
   var STORE_KEY = "wtt:v2";
   var state = {
     selected: [],        // 재료 id 배열 (직접 입력은 "c:라벨")
-    expandedChips: false,
+    ingGroup: "common",  // 재료 탭
+    ingQuery: "",        // 재료 빠른 검색
     tab: "fridge",
     mood: "any",
     budget: "any",
     method: "all",
     cat: "all",
+    outCat: "all",
     query: "",
     visible: 24,
     rows: [],
@@ -928,6 +1025,7 @@
         budget: state.budget,
         method: state.method,
         cat: state.cat,
+        outCat: state.outCat,
       }));
     } catch (e) { /* 저장 실패는 무시 (사생활 모드 등) */ }
   }
@@ -944,6 +1042,7 @@
       if (data && data.mood) state.mood = data.mood;
       if (data && data.budget) state.budget = data.budget;
       if (data && data.method) state.method = data.method;
+      if (data && data.outCat) state.outCat = data.outCat;
       if (data && data.cat) {
         var okCat = CATEGORIES.some(function (c) { return c.id === data.cat; });
         if (okCat) state.cat = data.cat;
@@ -993,7 +1092,10 @@
     }
 
     if (state.selected.length) {
-      var rows = matchRows(pool).filter(function (r) { return r.hit.length > 0; });
+      // 필수 재료가 걸린 요리 + 고른 양념(선택 재료)이 쓰이는 요리까지 보여 준다
+      var rows = matchRows(pool).filter(function (r) {
+        return r.hit.length > 0 || r.bonus.length > 0;
+      });
       rows.sort(function (a, b) {
         if (a.ready !== b.ready) return a.ready ? -1 : 1;
         if (b.percent !== a.percent) return b.percent - a.percent;
@@ -1027,32 +1129,85 @@
   /* ------------------------------------------------------------------
      6. 렌더 — 재료 칩
      ------------------------------------------------------------------ */
+  function ingMatches(item, q) {
+    if (normalize(item.label).indexOf(q) !== -1) return true;
+    for (var i = 0; i < item.aliases.length; i++) {
+      if (normalize(item.aliases[i]).indexOf(q) !== -1) return true;
+    }
+    return false;
+  }
+
+  function renderIngTabs() {
+    var wrap = el.ingTabs;
+    if (!wrap) return;
+    wrap.innerHTML = "";
+    var frag = document.createDocumentFragment();
+    ING_TABS.forEach(function (t) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "pill ing-tab";
+      btn.dataset.group = t.id;
+      btn.setAttribute("aria-pressed", !state.ingQuery && state.ingGroup === t.id ? "true" : "false");
+      btn.innerHTML = '<span class="pill-emoji">' + t.emoji + "</span>" + escapeHtml(t.label);
+      btn.addEventListener("click", function () {
+        state.ingGroup = t.id;
+        state.ingQuery = "";
+        if (el.ingSearch) el.ingSearch.value = "";
+        if (el.ingSearchClear) el.ingSearchClear.classList.add("hidden");
+        renderIngTabs();
+        renderChips();
+      });
+      frag.appendChild(btn);
+    });
+    wrap.appendChild(frag);
+  }
+
   function renderChips() {
     var wrap = el.chipList;
     wrap.innerHTML = "";
     var frag = document.createDocumentFragment();
+    var q = normalize(state.ingQuery);
+    var list = [];
 
-    if (state.expandedChips) {
-      GROUPS.forEach(function (g) {
-        var head = document.createElement("span");
-        head.className = "chip-group";
-        head.textContent = g;
-        frag.appendChild(head);
-        INGREDIENTS.forEach(function (item) {
-          if (item.group !== g) return;
-          frag.appendChild(chipNode(item.id, item.label, item.emoji, false));
-        });
+    if (q) {
+      list = INGREDIENTS.filter(function (it) { return ingMatches(it, q); });
+    } else if (state.ingGroup === "common" || !state.ingGroup) {
+      var picked = {};
+      COMMON_ORDER.forEach(function (id) {
+        var it = BY_ID[id];
+        if (!it || picked[it.id]) return;
+        picked[it.id] = 1;
+        list.push(it);
+      });
+      INGREDIENTS.forEach(function (it) {
+        if (!it.common || picked[it.id]) return;
+        picked[it.id] = 1;
+        list.push(it);
       });
     } else {
-      COMMON_ORDER.map(function (id) { return BY_ID[id]; }).forEach(function (item) {
-        if (!item || !item.common) return;
-        frag.appendChild(chipNode(item.id, item.label, item.emoji, false));
-      });
-      INGREDIENTS.forEach(function (item) {
-        if (!item.common || COMMON_ORDER.indexOf(item.id) !== -1) return;
-        frag.appendChild(chipNode(item.id, item.label, item.emoji, false));
-      });
+      list = INGREDIENTS.filter(function (it) { return it.group === state.ingGroup; });
     }
+
+    if (q) {
+      var note = document.createElement("p");
+      note.className = "ing-hint";
+      note.textContent = list.length
+        ? "'" + state.ingQuery + "' 검색 결과 " + list.length + "개"
+        : "'" + state.ingQuery + "'에 맞는 재료가 없어요. 아래에 직접 입력해 추가할 수 있어요.";
+      frag.appendChild(note);
+    }
+
+    var lastGroup = null;
+    list.forEach(function (item) {
+      if (q && item.group !== lastGroup) {
+        lastGroup = item.group;
+        var head = document.createElement("span");
+        head.className = "chip-group";
+        head.textContent = (GROUP_EMOJI[item.group] || "🍴") + " " + item.group;
+        frag.appendChild(head);
+      }
+      frag.appendChild(chipNode(item.id, item.label, item.emoji, false));
+    });
 
     // 직접 추가한 재료
     state.selected.forEach(function (id) {
@@ -1061,12 +1216,34 @@
     });
 
     wrap.appendChild(frag);
+  }
 
-    var hidden = INGREDIENTS.filter(function (i) { return !i.common; }).length;
-    el.moreChipsBtn.textContent = state.expandedChips
-      ? "재료 접기 ▲"
-      : "재료 전체 보기 (+" + hidden + ") ▼";
-    el.moreChipsBtn.classList.toggle("hidden", hidden <= 0 && !state.expandedChips);
+  // 선택한 재료만 따로 보여 주는 줄
+  function renderSelectedChips() {
+    if (!el.selChips) return;
+    el.selChips.innerHTML = "";
+    if (!state.selected.length) {
+      el.selChips.classList.add("hidden");
+      return;
+    }
+    el.selChips.classList.remove("hidden");
+
+    var label = document.createElement("span");
+    label.className = "sel-label";
+    label.textContent = "내가 고른 재료";
+    el.selChips.appendChild(label);
+
+    state.selected.forEach(function (id) {
+      var it = ing(id);
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "chip is-selected";
+      btn.innerHTML = '<span class="chip-emoji">' + (it.emoji || "🍴") + "</span>" +
+        escapeHtml(it.label) + '<span class="chip-x" aria-hidden="true">✕</span>';
+      btn.setAttribute("aria-label", it.label + " 선택 해제");
+      btn.addEventListener("click", function () { toggleIngredient(id); });
+      el.selChips.appendChild(btn);
+    });
   }
 
   function chipNode(id, label, emoji, custom) {
@@ -1096,6 +1273,7 @@
     if (navigator.vibrate) { try { navigator.vibrate(8); } catch (e) {} }
 
     renderChips();
+    renderSelectedChips();
     renderSummary();
     renderResults();
     save();
@@ -1122,6 +1300,7 @@
     if (!state.selected.length) return;
     state.selected = [];
     renderChips();
+    renderSelectedChips();
     renderSummary();
     renderResults();
     save();
@@ -1177,7 +1356,7 @@
     var n = state.rows.length;
     var title, sub = "";
     if (state.selected.length) {
-      title = "지금 만들 수 있는 요리";
+      title = "내 재료로 만드는 요리";
       sub = n + "개 찾음";
     } else if (state.query) {
       title = "'" + state.query + "' 검색 결과";
@@ -1265,7 +1444,7 @@
     box.innerHTML =
       '<h3>가진 재료만 골라도 돼요</h3>' +
       "<p>위에서 재료를 누르면 지금 바로 만들 수 있는 요리를 찾아드려요.<br>" +
-      "재료 없이도 검색이나 카테고리로 1,000개가 넘는 레시피를 둘러볼 수 있어요.</p>" +
+      "재료 없이도 검색이나 카테고리로 1,400개가 넘는 레시피를 둘러볼 수 있어요.</p>" +
       '<button type="button" class="quick-start" id="quickStart">자주 있는 재료로 시작하기</button>';
     list.appendChild(box);
     bindQuickStart(box);
@@ -1277,6 +1456,7 @@
     quick.addEventListener("click", function () {
       state.selected = ["egg", "kimchi", "rice", "pa"];
       renderChips();
+      renderSelectedChips();
       renderSummary();
       renderResults();
       save();
@@ -1371,6 +1551,7 @@
     el.budgetSeg.innerHTML = "";
     el.methodSeg.innerHTML = "";
     if (el.catSeg) el.catSeg.innerHTML = "";
+    if (el.outCatSeg) el.outCatSeg.innerHTML = "";
 
     MOODS.forEach(function (m) {
       el.moodSeg.appendChild(segButton(m.label, state.mood === m.id, function () {
@@ -1391,6 +1572,8 @@
     METHODS.forEach(function (m) {
       el.methodSeg.appendChild(segButton(m.label, state.method === m.id, function () {
         state.method = m.id;
+        if (m.id === "home") state.outCat = "all";
+        if (m.id === "out") state.cat = "all";
         renderFilters();
         renderPoolHint();
         save();
@@ -1400,12 +1583,27 @@
       CATEGORIES.forEach(function (c) {
         el.catSeg.appendChild(segButton(c.label, state.cat === c.id, function () {
           state.cat = c.id;
+          if (c.id !== "all") state.outCat = "all";
           renderFilters();
           renderPoolHint();
           save();
         }));
       });
     }
+    if (el.outCatSeg) {
+      OUT_CATS.forEach(function (c) {
+        var label = c.id === "all" ? "전체" : (OUT_EMOJI[c.id] || "🛵") + " " + c.label;
+        el.outCatSeg.appendChild(segButton(label, state.outCat === c.id, function () {
+          state.outCat = c.id;
+          if (c.id !== "all") state.cat = "all";
+          renderFilters();
+          renderPoolHint();
+          save();
+        }));
+      });
+    }
+    if (el.catRow) el.catRow.classList.toggle("hidden", state.method === "out");
+    if (el.outCatRow) el.outCatRow.classList.toggle("hidden", state.method === "home");
   }
 
   function segButton(label, active, onClick) {
@@ -1418,10 +1616,20 @@
   }
 
   function getPool() {
+    var homeCat = state.method === "out" ? "all" : state.cat;
+    var outCat = state.method === "home" ? "all" : state.outCat;
+
     return ALLDISH.filter(function (d) {
       if (state.method !== "all" && d.method !== state.method) return false;
-      // 배달·외식만 볼 때는 음식 종류로 거르지 않는다
-      if (state.cat !== "all" && state.method !== "out" && d.cat !== state.cat) return false;
+      if (d.method === "out") {
+        if (outCat !== "all" && d.cat !== outCat) return false;
+        // 집밥 종류를 골랐으면 배달은 후보에서 뺀다
+        if (homeCat !== "all") return false;
+      } else {
+        if (homeCat !== "all" && d.cat !== homeCat) return false;
+        // 배달 종류를 골랐으면 집밥은 후보에서 뺀다
+        if (outCat !== "all") return false;
+      }
       if (state.mood !== "any" && d.moods.indexOf(state.mood) === -1) return false;
       if (state.budget === "low" && d.budget !== "low") return false;
       if (state.budget === "mid" && d.budget === "high") return false;
@@ -1484,7 +1692,7 @@
     el.reelName.textContent = dish.name;
     el.reelSub.textContent = dish.method === "home"
       ? dish.cat + " · " + formatTime(dish.time) + " · " + levelText(dish.level)
-      : dish.price + " · 배달·외식";
+      : (OUT_EMOJI[dish.cat] || "🛵") + " " + dish.cat + " · " + dish.price;
   }
 
   async function spin() {
@@ -1537,7 +1745,7 @@
     var wrap = document.createElement("div");
     var meta = dish.method === "home"
       ? [dish.cat, "⏱ " + formatTime(dish.time), levelText(dish.level), "🏠 집에서"]
-      : [dish.price, "🛵 배달·외식", moodLabel(dish.moods[0])];
+      : [dish.price, (OUT_EMOJI[dish.cat] || "🛵") + " " + dish.cat, moodLabel(dish.moods[0])];
 
     var html = "";
     html += '<div class="result-emoji">' + dish.emoji + "</div>";
@@ -1600,7 +1808,8 @@
     if (dish.method === "home") {
       lines.push("⏱ " + formatTime(dish.time) + " · " + levelText(dish.level) + " · " + dish.cat);
     } else {
-      lines.push(dish.price + " · 배달·외식");
+      lines.push(dish.price + " · " + dish.cat + " (배달·외식)");
+      if (dish.tip) lines.push("💡 " + dish.tip);
     }
     if (/^https?:/.test(location.protocol)) lines.push(location.href);
     return lines.join("\n");
@@ -1694,17 +1903,30 @@
         html += "</ol></div>";
       }
     } else {
-      html += '<div class="drawer-section"><h3>메뉴 정보</h3><div class="check-row">';
-      html += '<span class="check">' + escapeHtml(dish.price) + "</span>";
-      html += '<span class="check">🛵 배달·외식</span>';
+      html += '<div class="drawer-section"><h3>배달·외식 메뉴</h3>';
+      html += '<div class="price-card">';
+      html += '<div class="price-card-label">예상 주문 가격</div>';
+      html += '<div class="price-card-value">' + escapeHtml(dish.price) + "</div>";
+      html += '<div class="price-card-sub">2026년 서울 기준 · 배달비 별도</div>';
+      html += "</div>";
+      html += '<div class="check-row">';
+      html += '<span class="check is-cat">' + (OUT_EMOJI[dish.cat] || "🛵") + " " + escapeHtml(dish.cat) + "</span>";
       dish.moods.forEach(function (m) {
-        html += '<span class="check" style="background:#fdf2e7;color:#b5652f">' + moodLabel(m) + "</span>";
+        html += '<span class="check is-mood">' + moodLabel(m) + "</span>";
       });
       html += "</div></div>";
+
+      if (dish.bracket) {
+        html += '<div class="drawer-section"><h3>예산대</h3><div class="check-row">';
+        var bLabel = { under10k: "1만원 이하", "10to20k": "1만~2만원", over20k: "2만원 이상" }[dish.bracket] || "";
+        html += '<span class="check is-budget">' + escapeHtml(bLabel) + "</span>";
+        html += "</div></div>";
+      }
     }
 
     if (dish.tip) {
-      html += '<div class="tip-box"><b>💡 팁</b> ' + escapeHtml(dish.tip) + "</div>";
+      var tipTitle = dish.method === "out" ? "💡 주문 팁" : "💡 요리 팁";
+      html += '<div class="tip-box"><b>' + tipTitle + "</b> " + escapeHtml(dish.tip) + "</div>";
     }
 
     if (dish.src) {
@@ -1741,7 +1963,7 @@
       return [dish.cat, "⏱ " + formatTime(dish.time), levelText(dish.level)]
         .filter(Boolean).join(" · ");
     }
-    return dish.price + " · 배달·외식";
+    return dish.price + " · " + dish.cat + " · 배달·외식";
   }
 
   function closeDrawer() {
@@ -1780,7 +2002,10 @@
      ------------------------------------------------------------------ */
   function init() {
     el.chipList = $("#chipList");
-    el.moreChipsBtn = $("#moreChipsBtn");
+    el.ingTabs = $("#ingTabs");
+    el.ingSearch = $("#ingSearch");
+    el.ingSearchClear = $("#ingSearchClear");
+    el.selChips = $("#selChips");
     el.customForm = $("#customForm");
     el.customInput = $("#customInput");
     el.selSummary = $("#selSummary");
@@ -1796,6 +2021,9 @@
     el.budgetSeg = $("#budgetSeg");
     el.methodSeg = $("#methodSeg");
     el.catSeg = $("#catSeg");
+    el.outCatSeg = $("#outCatSeg");
+    el.catRow = $("#catRow");
+    el.outCatRow = $("#outCatRow");
     el.poolLabel = $("#poolLabel");
     el.reel = $("#reel");
     el.reelEmoji = $("#reelEmoji");
@@ -1812,10 +2040,29 @@
 
     load();
 
-    el.moreChipsBtn.addEventListener("click", function () {
-      state.expandedChips = !state.expandedChips;
-      renderChips();
-    });
+    if (el.ingSearch) {
+      var ingTimer = null;
+      el.ingSearch.addEventListener("input", function () {
+        var value = el.ingSearch.value;
+        if (ingTimer) clearTimeout(ingTimer);
+        ingTimer = setTimeout(function () {
+          state.ingQuery = value.trim();
+          if (el.ingSearchClear) el.ingSearchClear.classList.toggle("hidden", !state.ingQuery);
+          renderIngTabs();
+          renderChips();
+        }, 120);
+      });
+    }
+    if (el.ingSearchClear) {
+      el.ingSearchClear.addEventListener("click", function () {
+        el.ingSearch.value = "";
+        state.ingQuery = "";
+        el.ingSearchClear.classList.add("hidden");
+        renderIngTabs();
+        renderChips();
+        el.ingSearch.focus();
+      });
+    }
 
     el.customForm.addEventListener("submit", function (event) {
       event.preventDefault();
@@ -1840,6 +2087,7 @@
 
       el.customInput.value = "";
       renderChips();
+      renderSelectedChips();
       renderSummary();
       renderResults();
       save();
@@ -1884,12 +2132,15 @@
     });
 
     if (el.heroStat) {
-      el.heroStat.textContent = "집밥 레시피 " +
-        HOME_RECIPES.length.toLocaleString("ko-KR") + "가지 · 재료 " + INGREDIENTS.length + "종";
+      el.heroStat.textContent = "집밥 " + HOME_RECIPES.length.toLocaleString("ko-KR") +
+        " · 배달·외식 " + (ALLDISH.length - HOME_RECIPES.length) +
+        " · 재료 " + INGREDIENTS.length + "종";
     }
 
     // 초기 렌더
+    renderIngTabs();
     renderChips();
+    renderSelectedChips();
     renderSummary();
     renderCatPills();
     renderFilters();

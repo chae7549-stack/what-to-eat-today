@@ -4,31 +4,36 @@
    ========================================================================== */
 
 :root {
-  --bg: #fff7ef;
-  --bg-deep: #f6e8da;
+  --bg: #fffbf6;
+  --bg-deep: #f4e9dc;
   --card: #ffffff;
-  --card-soft: #fffdfa;
+  --card-soft: #fffcf8;
 
   --ink: #2a1d14;
   --ink-2: #6b5647;
-  --ink-3: #a08b7a;
+  --ink-3: #a3907f;
 
   --primary: #ff6b3d;
   --primary-dark: #e8501f;
-  --primary-soft: #ffe6d9;
+  --primary-soft: #ffe8dc;
   --accent: #ffb020;
   --accent-soft: #fff2d4;
+  --butter: #ffe8b3;
+  --butter-soft: #fff6de;
 
   --green: #17a673;
   --green-soft: #e4f8ef;
-  --line: #f2e2d4;
+  --sage: #6fae90;
+  --sage-soft: #eaf6ef;
+  --line: #f3e6d8;
+  --line-strong: #ead7c4;
 
-  --shadow-sm: 0 2px 8px rgba(126, 74, 32, 0.06);
-  --shadow: 0 10px 30px rgba(126, 74, 32, 0.1);
-  --shadow-lg: 0 18px 50px rgba(126, 74, 32, 0.18);
+  --shadow-sm: 0 2px 10px rgba(150, 96, 48, 0.07);
+  --shadow: 0 12px 32px rgba(150, 96, 48, 0.11);
+  --shadow-lg: 0 20px 54px rgba(150, 96, 48, 0.18);
 
-  --radius: 22px;
-  --radius-sm: 14px;
+  --radius: 24px;
+  --radius-sm: 16px;
   --tap: 46px;
 
   --safe-bottom: env(safe-area-inset-bottom, 0px);
@@ -195,7 +200,7 @@ p {
   border: 1px solid var(--line);
   border-radius: var(--radius);
   box-shadow: var(--shadow-sm);
-  padding: 16px;
+  padding: 17px 16px 15px;
   margin: 14px 16px 0;
 }
 
@@ -208,7 +213,7 @@ p {
 }
 
 .card-title {
-  font-size: 15px;
+  font-size: 15.5px;
   font-weight: 800;
   letter-spacing: -0.02em;
   display: flex;
@@ -1685,4 +1690,220 @@ p {
   font-weight: 600;
   color: var(--ink-3);
   line-height: 1.6;
+}
+
+/* ==========================================================================
+   v9 — 재료 세분화(검색·그룹 탭) · 배달 메뉴 · 더 귀여운 카드
+   ========================================================================== */
+
+/* ---------- 재료 빠른 검색 ---------- */
+.ing-search {
+  margin-top: 2px;
+  min-height: 44px;
+  background: var(--card-soft);
+}
+.ing-search input {
+  flex: 1;
+  min-width: 0;
+  height: 42px;
+  border: 0;
+  background: transparent;
+  font-size: 14px;
+  outline: none;
+}
+.ing-search input::placeholder {
+  color: var(--ink-3);
+}
+
+/* ---------- 재료 그룹 탭 ---------- */
+.ing-tabs {
+  margin-top: 10px;
+  gap: 7px;
+}
+.ing-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-height: 34px;
+  padding: 0 12px;
+  background: #fff;
+  border: 1.5px solid var(--line);
+  font-size: 12.5px;
+  color: var(--ink-2);
+}
+.ing-tab .pill-emoji {
+  font-size: 13px;
+  line-height: 1;
+}
+.ing-tab[aria-pressed="true"] {
+  background: linear-gradient(160deg, #fff2e9, var(--primary-soft));
+  border-color: var(--primary);
+  color: var(--primary-dark);
+  box-shadow: 0 4px 12px rgba(255, 107, 61, 0.16);
+}
+
+/* ---------- 선택한 재료 줄 ---------- */
+.sel-chips {
+  margin: 12px 0 2px;
+  padding: 10px 10px 4px;
+  border-radius: var(--radius-sm);
+  background: var(--butter-soft);
+  border: 1px dashed #ffdfa4;
+  gap: 7px;
+}
+.sel-chips .sel-label {
+  display: block;
+  width: 100%;
+  font-size: 11.5px;
+  font-weight: 800;
+  color: #b5652f;
+  margin-bottom: 4px;
+  letter-spacing: -0.01em;
+}
+.chip.is-selected {
+  min-height: 36px;
+  font-size: 13px;
+  background: #fff;
+  border-color: var(--primary);
+  color: var(--primary-dark);
+  box-shadow: 0 3px 10px rgba(255, 107, 61, 0.14);
+}
+.chip.is-selected:active {
+  transform: scale(0.95);
+}
+.chip-x {
+  font-size: 10px;
+  font-weight: 900;
+  margin-left: 3px;
+  opacity: 0.45;
+}
+
+.ing-chips {
+  gap: 7px;
+}
+.ing-hint {
+  width: 100%;
+  margin: 2px 0 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink-3);
+}
+.chip-group {
+  display: block;
+  width: 100%;
+  margin: 10px 0 2px;
+  font-size: 11.5px;
+  font-weight: 800;
+  color: #b5652f;
+}
+.chip-group:first-child {
+  margin-top: 2px;
+}
+
+/* ---------- 요리 카드 다듬기 ---------- */
+.dish {
+  border-radius: 20px;
+  padding: 13px 14px;
+}
+.dish-thumb {
+  background: linear-gradient(150deg, #fff6ea, #ffe6d2);
+  box-shadow: inset 0 0 0 1px #ffe9d8, 0 3px 9px rgba(196, 132, 71, 0.1);
+}
+.dish-name {
+  letter-spacing: -0.02em;
+}
+.ready-tag {
+  background: var(--sage-soft);
+  color: #1f7a55;
+}
+
+/* ---------- 배달 종류 탭 ---------- */
+#outCatRow .seg button {
+  background: #fff7ee;
+  border-color: #ffe4cd;
+}
+#outCatRow .seg button[aria-pressed="true"] {
+  background: linear-gradient(150deg, #fff0e4, #ffe2cf);
+  border-color: var(--primary);
+  color: var(--primary-dark);
+}
+
+/* ---------- 배달 메뉴 드로어 ---------- */
+.price-card {
+  padding: 14px 16px;
+  border-radius: 18px;
+  background: linear-gradient(150deg, #fff5ea, #ffe9d9);
+  border: 1px solid #ffe1c8;
+  text-align: center;
+  margin-bottom: 10px;
+}
+.price-card-label {
+  font-size: 11.5px;
+  font-weight: 800;
+  color: #b5652f;
+  letter-spacing: 0.01em;
+}
+.price-card-value {
+  margin-top: 2px;
+  font-size: 22px;
+  font-weight: 900;
+  color: var(--primary-dark);
+  letter-spacing: -0.03em;
+}
+.price-card-sub {
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--ink-3);
+}
+.check.is-cat {
+  background: var(--butter-soft);
+  color: #a9670f;
+}
+.check.is-mood {
+  background: #fdf2e7;
+  color: #b5652f;
+}
+.check.is-budget {
+  background: var(--sage-soft);
+  color: #1f7a55;
+}
+
+/* ---------- 룰렛 결과 · 필터 라벨 ---------- */
+.filter-label {
+  font-size: 12px;
+  font-weight: 800;
+  color: #b5652f;
+}
+#outCatRow.hidden,
+#catRow.hidden {
+  display: none !important;
+}
+
+/* ---------- 살짝 더 귀엽게: 헤더 · 탭바 ---------- */
+.hero h1 {
+  background: linear-gradient(100deg, #3a2718 0%, #8a4a22 65%, #d1601f 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.hero-stat {
+  background: rgba(255, 255, 255, 0.85);
+  border-color: #ffe2c2;
+}
+.tabbar {
+  background: rgba(255, 251, 246, 0.9);
+  border-top-color: rgba(243, 230, 216, 0.95);
+}
+.tab[aria-selected="true"] {
+  background: linear-gradient(160deg, #fff2e9, #ffe4d2);
+  color: var(--primary-dark);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ing-tab,
+  .chip,
+  .dish {
+    animation: none !important;
+    transition: none !important;
+  }
 }

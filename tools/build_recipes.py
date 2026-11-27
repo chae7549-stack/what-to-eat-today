@@ -13,29 +13,34 @@ import io
 import json
 import pathlib
 import re
-import subprocess
 import sys
 import time
+import zlib
 from collections import Counter, OrderedDict
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "tools"))
 import recipe_taxonomy as T  # noqa: E402
+import delivery_menus as D     # noqa: E402
+import food_tips as F          # noqa: E402
 
 RAW = [ROOT / "scratch" / "raw.jsonl", ROOT / "scratch" / "raw2.jsonl"]
 OUT = ROOT / "data" / "recipes-data.js"
 
 # 카테고리별 최대 수 (고르게 담기)
 CAP = OrderedDict([
-    ("밥·죽", 190),
-    ("국·찌개", 185),
-    ("반찬", 185),
-    ("볶음·구이", 175),
-    ("면·파스타", 165),
-    ("분식·야식", 170),
-    ("전·부침", 140),
-    ("양식·기타", 140),
+    ("밥·죽", 195),
+    ("국·찌개", 190),
+    ("반찬", 200),
+    ("볶음·구이", 185),
+    ("면·파스타", 178),
+    ("분식·야식", 178),
+    ("전·부침", 152),
+    ("양식·기타", 162),
 ])
+
+# 요리 이름 키워드 팁 (긴 키워드 먼저 확인해야 '김치볶음밥'이 '볶음밥'보다 먼저 걸린다)
+TIP_KEYS = sorted(F.RULES.items(), key=lambda kv: -len(kv[0]))
 
 DROP_PAT = re.compile(
     r"(http|www\.|배송|구매|쿠팡|문의|광고|이벤트|공동구매|상품|리뷰|구독|팔로우|블로그|"
@@ -197,6 +202,37 @@ def pick_emoji(rec, req_ids):
     return EMOJI_BY_CAT.get(cat, "🍽️")
 
 
+def make_tip(name, req, cat, rid):
+    """요리별 팁: (이름 키워드 → 주재료 → 카테고리) 핵심 팁 + 보조 팁."""
+    base = None
+    for kw, tip in TIP_KEYS:
+        if kw in name:
+            base = tip
+            break
+    main_id = None
+    # 이름에 나온 재료를 우선 (예: '새우 크림 리조또' → 새우)
+    named = [i for i in req if BY_ID.get(i) and BY_ID[i]["label"] in name]
+    order = named + [i for i in req if i not in named]
+    for rid_ in order:
+        if base is None and rid_ in F.ING_TIPS:
+            base = F.ING_TIPS[rid_]
+        if main_id is None and (rid_ in F.ING_EXTRAS or rid_ in F.ING_TIPS):
+            main_id = rid_
+    if base is None:
+        base = F.CAT_RULES.get(cat, "간은 마지막에 맞추면 재료 맛이 살아요.")
+
+    pool = []
+    if main_id in F.ING_EXTRAS:
+        pool.append(F.ING_EXTRAS[main_id])
+    pool.extend(F.EXTRAS.get(cat, []))
+    pool.extend(F.TECHNIQUE)
+    h = zlib.crc32((rid + name).encode("utf-8"))
+    extra = pool[h % len(pool)]
+    if extra == base:
+        extra = pool[(h + 1) % len(pool)]
+    return base + " " + extra
+
+
 def curated_names():
     """app.js 의 큐레이션 요리 이름을 quickjs로 읽어 온다."""
     src = io.open(ROOT / "app.js", encoding="utf-8").read()
@@ -239,6 +275,9 @@ def load_records():
 
 
 def build():
+    errs = T.validate()
+    if errs:
+        raise SystemExit("재료 분류 오류:\n" + "\n".join(errs))
     recs = load_records()
     cur = {norm_title(n) for n in curated_names()}
     print(f"수집 원본 {len(recs)}건 · 큐레이션 제목 {len(cur)}개")
@@ -290,7 +329,7 @@ def build():
         if len(req) > 10:
             opt = req[10:] + opt
             req = req[:10]
-        opt = [x for x in opt if x not in req][:8]
+        opt = [x for x in opt if x not in req][:10]
 
         # 제목 중복: 후기 많은 쪽 유지
         dup_key = title
@@ -330,6 +369,7 @@ def build():
             "author": (rec.get("author") or "")[:20],
             "rating": rec.get("rating") or 0,
             "reviews": rec.get("reviews") or 0,
+            "tip": make_tip(name, req, cat, "r" + str(rec["id"])),
         })
         per_cat[cat] += 1
 
@@ -341,16 +381,58 @@ def build():
             continue
         cnt[r["cat"]] += 1
         picked.append(r)
+    # ---- 희귀 재료 커버리지: 아무 레시피에도 안 남은 재료가 있으면
+    #      같은 카테고리의 후보(상한에 밀린 것) 중 그 재료를 쓰는 것으로 바꿔 넣는다.
+    picked_ids = {r["id"] for r in picked}
+    overflow = [r for r in kept if r["id"] not in picked_ids]
+    by_ing = {}
+    for r in overflow:
+        for iid in r["req"] + r["opt"]:
+            by_ing.setdefault(iid, []).append(r)
+    covered = set()
+    for r in picked:
+        covered.update(r["req"])
+        covered.update(r["opt"])
+    swaps = 0
+    for item in T.ITEMS:
+        if item.get("always") or item["id"] in covered:
+            continue
+        cands = [r for r in by_ing.get(item["id"], []) if r["id"] not in picked_ids]
+        if not cands:
+            continue
+        cands.sort(key=lambda r: (-r["reviews"], -len(r["steps"])))
+        cand = cands[0]
+        same_cat = [r for r in picked if r["cat"] == cand["cat"]]
+        if not same_cat:
+            continue
+        victim = same_cat[-1]
+        picked.remove(victim)
+        picked_ids.discard(victim["id"])
+        picked.append(cand)
+        picked_ids.add(cand["id"])
+        covered.update(cand["req"])
+        covered.update(cand["opt"])
+        swaps += 1
+    if swaps:
+        print(f"희귀 재료 커버리지로 교체 {swaps}건")
+
     picked.sort(key=lambda r: (r["cat"], -r["reviews"], r["name"]))
 
     print("카테고리별 최종:", dict(cnt), "합계", len(picked))
     print("제외 사유:", dict(dropped))
     print("매핑 안 된 재료 상위:", unmatched.most_common(25))
 
+    menus = D.rows()
+    for i, m in enumerate(menus, 1):
+        m["id"] = "o" + str(i)
+        m["method"] = "out"
+        m["level"] = 1
+
     data = {
         "generatedAt": time.strftime("%Y-%m-%d"),
         "source": "만개의레시피(10000recipe.com)",
         "count": len(picked),
+        "counts": {"home": len(picked), "out": len(menus), "total": len(picked) + len(menus)},
         "taxonomy": [
             {
                 "id": i["id"], "label": i["label"], "emoji": i["emoji"], "group": i["group"],
@@ -360,16 +442,17 @@ def build():
             for i in T.ITEMS
         ],
         "recipes": picked,
+        "out": menus,
     }
     OUT.parent.mkdir(parents=True, exist_ok=True)
     body = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
     js = (
         "/* 자동 생성 파일입니다. tools/build_recipes.py 로 다시 만드세요.\n"
-        f"   출처: 만개의레시피(10000recipe.com) · {len(picked)}개 레시피 · {data['generatedAt']} */\n"
+        f"   출처: 만개의레시피(10000recipe.com) · 집밥 {len(picked)}개 · 배달·외식 {len(menus)}개 · {data['generatedAt']} */\n"
         "window.RECIPE_DB = " + body + ";\n"
     )
     io.open(OUT, "w", encoding="utf-8").write(js)
-    print(f"저장: {OUT} ({OUT.stat().st_size / 1024:.0f}KB, 레시피 {len(picked)}개)")
+    print(f"저장: {OUT} ({OUT.stat().st_size / 1024:.0f}KB, 집밥 {len(picked)}개 + 배달·외식 {len(menus)}개)")
 
 
 if __name__ == "__main__":

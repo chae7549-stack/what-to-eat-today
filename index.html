@@ -33,7 +33,7 @@
     <meta property="og:image" content="./icons/icon-512.png" />
     <meta name="twitter:card" content="summary_large_image" />
 
-    <link rel="stylesheet" href="./styles.css?v=7" />
+    <link rel="stylesheet" href="./styles.css?v=9" />
   </head>
 
   <body>
@@ -49,7 +49,7 @@
         <p class="hero-sub">
           있는 재료로 <b>오늘 뭐 먹을지</b> 바로 정해드려요
         </p>
-        <p class="hero-stat" id="heroStat">집밥 레시피 1,000+</p>
+        <p class="hero-stat" id="heroStat">집밥 1,400+ · 배달·외식 150</p>
       </header>
 
       <main>
@@ -63,9 +63,24 @@
               </h2>
             </div>
 
-            <div id="chipList" class="chips" role="group" aria-label="재료 선택"></div>
+            <div class="search-row ing-search">
+              <span class="search-ico" aria-hidden="true">🔍</span>
+              <input
+                id="ingSearch"
+                type="search"
+                inputmode="search"
+                autocomplete="off"
+                placeholder="재료 빠른 검색 (간장, 고추장, 발사믹식초…)"
+                aria-label="재료 검색"
+              />
+              <button type="button" id="ingSearchClear" class="search-clear hidden" aria-label="재료 검색어 지우기">✕</button>
+            </div>
 
-            <button type="button" id="moreChipsBtn" class="ghost-btn">재료 더 보기 ▼</button>
+            <div id="ingTabs" class="pills ing-tabs" role="tablist" aria-label="재료 그룹"></div>
+
+            <div id="selChips" class="chips sel-chips hidden" aria-label="선택한 재료"></div>
+
+            <div id="chipList" class="chips ing-chips" role="group" aria-label="재료 선택"></div>
 
             <form id="customForm" class="custom-row" autocomplete="off">
               <input
@@ -150,9 +165,13 @@
               <span class="filter-label">방식</span>
               <div class="seg" id="methodSeg" role="group" aria-label="방식"></div>
             </div>
-            <div class="filter-row">
-              <span class="filter-label">종류</span>
-              <div class="seg" id="catSeg" role="group" aria-label="음식 종류"></div>
+            <div class="filter-row" id="catRow">
+              <span class="filter-label">집밥 종류</span>
+              <div class="seg" id="catSeg" role="group" aria-label="집밥 종류"></div>
+            </div>
+            <div class="filter-row" id="outCatRow">
+              <span class="filter-label">배달 종류</span>
+              <div class="seg" id="outCatSeg" role="group" aria-label="배달 음식 종류"></div>
             </div>
           </div>
 
@@ -217,7 +236,7 @@
       </p>
     </noscript>
 
-    <script src="./data/recipes-data.js?v=7" defer></script>
-    <script src="./app.js?v=7" defer></script>
+    <script src="./data/recipes-data.js?v=9" defer></script>
+    <script src="./app.js?v=9" defer></script>
   </body>
 </html>
