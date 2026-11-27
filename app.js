@@ -1091,16 +1091,22 @@
     }
     html += "</div>";
 
-    if (showMatch && d.req.length) {
+    if (d.req.length) {
       html += '<div class="ing-row">';
       d.req.forEach(function (id) {
+        if (!showMatch) {
+          html += '<span class="ing plain">' + ingLabel(id) + "</span>";
+          return;
+        }
         var has = row.hit.indexOf(id) !== -1;
         html += '<span class="ing' + (has ? "" : " miss") + '">' + ingLabel(id) + "</span>";
       });
-      d.opt.forEach(function (id) {
-        var has = state.selected.indexOf(id) !== -1;
-        html += '<span class="ing opt' + (has ? " has" : "") + '">' + ingLabel(id) + "</span>";
-      });
+      if (showMatch) {
+        d.opt.forEach(function (id) {
+          var has = state.selected.indexOf(id) !== -1;
+          html += '<span class="ing opt' + (has ? " has" : "") + '">' + ingLabel(id) + "</span>";
+        });
+      }
       html += "</div>";
     }
 
@@ -1176,10 +1182,42 @@
     if (!pool.length) {
       el.poolLabel.textContent = "조건에 맞는 메뉴가 없어요 · 필터를 풀어보세요";
       el.spinBtn.disabled = true;
-      return;
+    } else {
+      el.poolLabel.textContent = pool.length + "개 메뉴 중에서 뽑아요";
+      el.spinBtn.disabled = state.spinning;
     }
-    el.poolLabel.textContent = pool.length + "개 메뉴 중에서 뽑아요";
-    el.spinBtn.disabled = state.spinning;
+    renderPoolPreview(pool);
+  }
+
+  function renderPoolPreview(pool) {
+    if (!el.poolPreview) return;
+    el.poolPreview.innerHTML = "";
+
+    var head = document.createElement("div");
+    head.className = "preview-head";
+    head.innerHTML = "<span>이 중에서 뽑아요</span><b>" + pool.length + "개</b>";
+    el.poolPreview.appendChild(head);
+
+    if (!pool.length) return;
+
+    var wrap = document.createElement("div");
+    wrap.className = "chips";
+    pool.slice(0, 14).forEach(function (d) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "chip mini";
+      b.innerHTML = '<span class="chip-emoji">' + d.emoji + "</span><span>" +
+        escapeHtml(d.name) + "</span>";
+      b.addEventListener("click", function () { openDrawer(d); });
+      wrap.appendChild(b);
+    });
+    if (pool.length > 14) {
+      var more = document.createElement("span");
+      more.className = "chip mini more";
+      more.textContent = "+" + (pool.length - 14);
+      wrap.appendChild(more);
+    }
+    el.poolPreview.appendChild(wrap);
   }
 
   function setReel(dish) {
@@ -1483,6 +1521,7 @@
     el.reelName = $("#reelName");
     el.reelSub = $("#reelSub");
     el.spinBtn = $("#spinBtn");
+    el.poolPreview = $("#poolPreview");
     el.result = $("#rouletteResult");
     el.drawer = $("#drawer");
     el.drawerPanel = $("#drawerPanel");
