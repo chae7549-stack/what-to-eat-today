@@ -1244,6 +1244,7 @@
 
     state.spinning = true;
     state.lastPick = null;
+    el.roulette.classList.remove("hidden");
     el.spinBtn.disabled = true;
     el.spinBtn.innerHTML = "<span>돌리는 중…</span>";
     el.reel.classList.add("is-spinning");
@@ -1272,6 +1273,8 @@
     el.spinBtn.disabled = false;
     el.spinBtn.innerHTML = "<span>한 번 더 돌리기</span>";
     renderResult(target);
+    // 결과 카드와 같은 내용을 두 번 보여주지 않도록 룰렛을 잠시 접어둔다
+    el.roulette.classList.add("hidden");
     if (navigator.vibrate) { try { navigator.vibrate(24); } catch (e) {} }
   }
 
@@ -1522,6 +1525,7 @@
     el.reelSub = $("#reelSub");
     el.spinBtn = $("#spinBtn");
     el.poolPreview = $("#poolPreview");
+    el.roulette = $(".roulette");
     el.result = $("#rouletteResult");
     el.drawer = $("#drawer");
     el.drawerPanel = $("#drawerPanel");
