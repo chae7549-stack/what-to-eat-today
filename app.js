@@ -1453,10 +1453,13 @@
 
     var wrap = document.createElement("div");
     wrap.className = "chips";
-    var picks = [];
-    for (var i = 0; i < 14 && i < pool.length; i++) {
-      picks.push(pool[Math.floor(Math.random() * pool.length)]);
+    // 중복 없이 14개 미리보기
+    var picks = [], idx = [];
+    while (idx.length < Math.min(14, pool.length)) {
+      var k = Math.floor(Math.random() * pool.length);
+      if (idx.indexOf(k) === -1) idx.push(k);
     }
+    idx.forEach(function (k) { picks.push(pool[k]); });
     picks.forEach(function (d) {
       var b = document.createElement("button");
       b.type = "button";
