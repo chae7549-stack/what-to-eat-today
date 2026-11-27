@@ -813,7 +813,8 @@
   // 검색용 문자열을 미리 만들어 둔다 (1,000개 이상도 즉시 검색)
   var HOME_RECIPES = [];
   (function buildIndex() {
-    RECIPES.forEach(function (d) {
+    RECIPES.forEach(function (d, i) {
+      d._i = i;
       var parts = [d.name, d.cat];
       d.ing.forEach(function (row) { parts.push(row[0]); });
       d._s = normalize(parts.join(" "));
@@ -1002,12 +1003,23 @@
       return rows;
     }
 
+    if (!POP_RANK) {
+      POP_RANK = {};
+      POPULAR_IDS.forEach(function (id, i) { POP_RANK[id] = i; });
+    }
     return pool.map(function (d) {
       return { dish: d, hit: [], missing: [], bonus: [], percent: 0, ready: false };
     }).sort(function (a, b) {
-      if (a.dish.curated !== b.dish.curated) return a.dish.curated ? -1 : 1;
-      if (b.dish.reviews !== a.dish.reviews) return b.dish.reviews - a.dish.reviews;
-      return a.dish.name < b.dish.name ? -1 : 1;
+      var da = a.dish, db = b.dish;
+      if (da.curated !== db.curated) return da.curated ? -1 : 1;
+      if (da.curated) {
+        var ra = POP_RANK[da.id] == null ? 99 : POP_RANK[da.id];
+        var rb = POP_RANK[db.id] == null ? 99 : POP_RANK[db.id];
+        if (ra !== rb) return ra - rb;
+        return da._i - db._i;
+      }
+      if (db.reviews !== da.reviews) return db.reviews - da.reviews;
+      return da.name < db.name ? -1 : 1;
     });
   }
 
@@ -1223,6 +1235,8 @@
       list.appendChild(more);
     }
   }
+
+  var POP_RANK = null;
 
   var POPULAR_IDS = [
     "kimchi-fried-rice", "tuna-mayo", "ganjang-gyeran-bap",
