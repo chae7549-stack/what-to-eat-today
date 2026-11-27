@@ -225,7 +225,9 @@ def make_tip(name, req, cat, rid):
     if main_id in F.ING_EXTRAS:
         pool.append(F.ING_EXTRAS[main_id])
     pool.extend(F.EXTRAS.get(cat, []))
-    pool.extend(F.TECHNIQUE)
+    for cats, tip in F.TECHNIQUE:
+        if cats is None or cat in cats:
+            pool.append(tip)
     h = zlib.crc32((rid + name).encode("utf-8"))
     extra = pool[h % len(pool)]
     if extra == base:

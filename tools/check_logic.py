@@ -257,7 +257,7 @@ def main():
     for t in tips:
         counts[t] = counts.get(t, 0) + 1
     worst = max(counts.values())
-    check(uniq >= 0.7, f"팁 문장이多样的 (고유 {uniq * 100:.0f}%)")
+    check(uniq >= 0.7, f"팁 문장이 겹치지 않음 (고유 {uniq * 100:.0f}%)")
     check(worst <= 8, f"같은 팁이 8개 레시피를 넘지 않음 (최대 {worst}개)")
     check(all(len(t) >= 20 for t in tips), "모든 팁이 20자 이상")
 
