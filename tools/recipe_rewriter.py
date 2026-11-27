@@ -82,6 +82,7 @@ TITLE_TAIL = [
     "만드는 법", "만드는법", "만들기", "끓이는 법", "끓이는법", "레시피", "황금레시피",
     "만드는 방법", "조리법", "비법", "꿀팁", "후기", "완성", "도전", "입니다", "이에요",
     "예요", "합니다", "했어요", "먹어요", "좋아요", "최고", "대박",
+    "맛있어요", "맛있다", "맛있네요", "은 덤", "는 덤", "덤",
 ]
 
 # 조리 문장에서는 지우면 안 되는, 요리에 실제로 쓰이는 '대가' 같은 낱말
@@ -258,13 +259,22 @@ def _is_dish(word):
     return False
 
 
+COMMENT_TOKEN = re.compile(
+    r"(맛있|좋아|고소|간단|쉬워|쉽|알려|즐겨|없어|드려|드릴|해요|어요|아요|께요|네요|죠|"
+    r"좋네|최고|대박|해$|요$)")
+
+
+def _comment_like(word):
+    return bool(COMMENT_TOKEN.search(word)) and len(word) <= 12
+
+
 def _title_core(segment):
     text = segment
     # 괄호 설명·따옴표·기호 제거
     text = re.sub(r"\[[^\]]*\]", " ", text)
     text = re.sub(r"\([^)]*\)", " ", text)
     text = re.sub(r"【[^】]*】", " ", text)
-    text = re.sub(r"[\"'“”‘’&♬♪★☆→·#]", " ", text)
+    text = re.sub(r"[\"'“”‘’&♬♪★☆→·#+]", " ", text)
     text = re.sub(r"[!?~]+", " ", text)
     for phrase in TITLE_PHRASE_NOISE:
         text = text.replace(phrase, " ")
@@ -292,12 +302,20 @@ def _title_core(segment):
             continue
         if bare.endswith(VERBISH_TAIL) and len(bare) > 1:
             continue
-        if bare.endswith(("에서", "부터", "까지", "으로", "로는", "보다")) and len(bare) > 2:
+        if bare.endswith(("에서", "부터", "까지", "으로", "으로도", "로는", "보다", "처럼")) and len(bare) > 2:
             continue
         words.append(bare)
 
     if not words:
         return ""
+    # 끝에 붙은 감상 표현(맛있어요·좋아해요·알려드릴께요 …)은 덜어 낸다
+    while words and _comment_like(words[-1]):
+        words.pop()
+    while len(words) > 1 and _comment_like(words[0]):
+        words.pop(0)
+    if not words:
+        return ""
+
     # 음식 이름처럼 끝나는 낱말을 기준으로, 그 뒤의 잡다한 말과 앞의 다른 음식 이름은 버린다
     for i in range(len(words) - 1, -1, -1):
         if _is_dish(words[i]):
