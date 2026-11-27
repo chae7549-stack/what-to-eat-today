@@ -907,9 +907,10 @@
     return min + "분";
   }
 
-  function shortName(name) {
+  function shortName(name, max) {
     var n = String(name || "");
-    return n.length > 30 ? n.slice(0, 29).trim() + "…" : n;
+    var limit = max || 30;
+    return n.length > limit ? n.slice(0, limit - 1).trim() + "…" : n;
   }
 
   function levelText(level) {
@@ -1465,7 +1466,7 @@
       b.type = "button";
       b.className = "chip mini";
       b.innerHTML = '<span class="chip-emoji">' + d.emoji + "</span><span>" +
-        escapeHtml(d.name) + "</span>";
+        escapeHtml(shortName(d.name, 20)) + "</span>";
       b.addEventListener("click", function () { openDrawer(d); });
       wrap.appendChild(b);
     });

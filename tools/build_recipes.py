@@ -183,11 +183,17 @@ EMOJI_BY_CAT = {
 }
 
 
+CAT_EMOJI_FIRST = ("국·찌개", "밥·죽")
+
+
 def pick_emoji(rec, req_ids):
+    cat = rec.get("cat")
+    if cat in CAT_EMOJI_FIRST:
+        return EMOJI_BY_CAT[cat]
     for rid in req_ids:
         if rid in EMOJI_BY_ING:
             return EMOJI_BY_ING[rid]
-    return EMOJI_BY_CAT.get(rec["cat"], "🍽️")
+    return EMOJI_BY_CAT.get(cat, "🍽️")
 
 
 def curated_names():
