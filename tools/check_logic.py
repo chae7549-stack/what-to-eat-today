@@ -101,7 +101,7 @@ globalThis.__t = {
   RECIPES: RECIPES.map(function (d) {
     return { id: d.id, name: d.name, cat: d.cat, emoji: d.emoji, time: d.time,
              level: d.level, moods: d.moods, budget: d.budget, method: d.method, price: d.price,
-             servings: d.servings,
+             servings: d.servings, portion: d.portion || "",
              req: d.req, opt: d.opt, ing: d.ing, steps: d.steps, tip: d.tip, comment: d.comment,
              src: d.src, curated: !!d.curated };
   }),
@@ -136,6 +136,15 @@ globalThis.__t = {
     return ingredientListHtml(d, function () { return false; });
   },
   servingsHtml: function (id) { return servingsHtml(__t.rowById(id)); },
+  hasServingUi: function (id) { return hasServingUi(__t.rowById(id)); },
+  hasServingUiOf: function (o) { return hasServingUi(o); },
+  hasScalableQty: function (id) { return hasScalableQty(__t.rowById(id)); },
+  scaleStepText: scaleStepText,
+  stepText: function (id, n) {
+    var d = __t.rowById(id); state.serving[id] = n;
+    var f = servingFactor(d);
+    return (d.steps || []).map(function (s) { return scaleStepText(s, f); });
+  },
   toggleFav: function (id) { return toggleFav(id); },
   isFav: function (id) { return isFav(id); },
   favIds: function () { return favIds.slice(); },
@@ -518,6 +527,121 @@ def main():
     check(one != four, "인분 수를 바꾸면 재료 분량이 달라짐")
     srv_html = ctx.eval("__t.servingsHtml('" + target["id"] + "')")
     check(all(f"{n}인분" in srv_html for n in (1, 2, 3, 4)), "인분 수 버튼 1·2·3·4 모두 있음")
+
+    # ---------- 9-3. 큐레이션 요리 재료 분량 ----------
+    curated = [r for r in recipes if r["curated"]]
+    check(len(curated) == 52, f"큐레이션 요리 52개 ({len(curated)}개)")
+    no_amt = [(r["id"], row[0]) for r in curated for row in r["ing"] if not (row[1] or "").strip()]
+    check(not no_amt, f"모든 큐레이션 요리에 재료 분량 (빈 분량 {no_amt[:4]})")
+    thin = [r["id"] for r in curated
+            if sum(1 for row in r["ing"] if re.search(r"\d", row[1] or "")) < 3]
+    check(not thin, f"큐레이션 요리마다 숫자 분량 3개 이상 (부족 {thin[:4]})")
+    bad_base = [r["id"] for r in curated if not re.match(r"^\d인분$", r["servings"] or "")]
+    check(not bad_base, f"큐레이션 요리 기본 인분 표기 (문제 {bad_base[:4]})")
+    extra_ids = sorted({row[2] for r in curated for row in r["ing"] if row[2]} - set(ing_ids))
+    check(not extra_ids, f"재료 분량의 재료 id 모두 유효 (모르는 id {extra_ids[:5]})")
+    miss_req = []
+    for r in curated:
+        have = {row[2]: (row[1] or "") for row in r["ing"]}
+        for rid in r["req"] + r["opt"]:
+            if not (have.get(rid) or "").strip():
+                miss_req.append(r["id"] + ":" + rid)
+    check(not miss_req, f"필수·선택 재료마다 분량 있음 (빠짐 {miss_req[:4]})")
+
+    # ---------- 9-4. 만드는 법(조리 문장) 분량 환산 ----------
+    step_cases = [("2큰술", 2, "4큰술"), ("1/2컵", 2, "1컵"), ("200g", 0.5, "100g"),
+                  ("3~4장", 2, "6~8장"), ("1.5L", 2, "3L"), ("1개", 4, "4개"),
+                  ("2꼬집", 3, "6꼬집")]
+    bad_step = [(t, f, ctx.eval("__t.scaleStepText(" + json.dumps(t) + "," + str(f) + ")"), w)
+                for t, f, w in step_cases
+                if ctx.eval("__t.scaleStepText(" + json.dumps(t) + "," + str(f) + ")") != w]
+    check(not bad_step, f"조리 문장 분량 환산 {len(step_cases)}건 (틀림 {bad_step[:3]})")
+
+    keep_text = "180도 오븐에 2번 넣고 5분, 20초, 3인분, 2단계, 25cm 틀"
+    kept = ctx.eval("__t.scaleStepText(" + json.dumps(keep_text) + ", 3)")
+    check(kept == keep_text, f"시간·온도·횟수·지름은 환산하지 않음 ({kept})")
+
+    mixed = "김치국물 2큰술과 물 3컵을 넣고 5분 끓인 뒤 180도에 2번 돌려 주세요."
+    scaled_mixed = ctx.eval("__t.scaleStepText(" + json.dumps(mixed) + ", 2)")
+    check(scaled_mixed == "김치국물 4큰술과 물 6컵을 넣고 5분 끓인 뒤 180도에 2번 돌려 주세요.",
+          f"한 문장 안에서 분량만 골라 환산 ({scaled_mixed})")
+
+    # ---------- 9-5. 인분 선택 버튼을 숨길 메뉴 ----------
+    hide_ids = ["gyeranmari", "dubu-kimchi", "gyeranjjim", "dubu-jorim", "kongnamul-muchim",
+                "gamja-jorim", "beoseot-bokkeum", "oi-muchim", "eomuk-bokkeum", "dubu-butter",
+                "tuna-potato-jorim", "edamame-muchim", "oi-chomuchim", "mango-smoothie"]
+    wrongly_shown = [i for i in hide_ids if js(ctx, "__t.hasServingUi(" + json.dumps(i) + ")") is not False]
+    shown_note = [i for i in hide_ids if "srv-row" in ctx.eval("__t.drawerFor(" + json.dumps(i) + ", 2)")]
+    check(not wrongly_shown, f"반찬·음료 {len(hide_ids)}개는 인분 버튼 없음 (보임 {wrongly_shown})")
+    check(not shown_note, f"반찬·음료 드로어에 인분 버튼 없음 (남음 {shown_note})")
+
+    show_ids = ["kimchi-fried-rice", "doenjang-jjigae", "kimchi-jjigae", "jeyuk", "tteokbokki",
+                "bibimbap", "aglio", "tteokguk", "kimchijeon", "curry", "chicken-fried-rice"]
+    wrongly_hidden = [i for i in show_ids if js(ctx, "__t.hasServingUi(" + json.dumps(i) + ")") is not True]
+    check(not wrongly_hidden, f"한 끼 메뉴 {len(show_ids)}개는 인분 버튼 있음 (없음 {wrongly_hidden})")
+
+    # 데이터에 없는 이름·단위로도 규칙이 서는지
+    def ui_of(obj):
+        return js(ctx, "__t.hasServingUiOf(" + json.dumps(obj, ensure_ascii=False) + ")")
+
+    fake_hide = [
+        {"name": "깻잎장아찌", "method": "home", "cat": "볶음·구이", "servings": "2인분",
+         "ing": [["깻잎", "20장", "kkaennip"]], "steps": ["간장 1컵에 절여 주세요."]},
+        {"name": "오이 피클", "method": "home", "cat": "양식·기타", "servings": "2인분",
+         "ing": [["오이", "2개", "cucumber"]], "steps": ["식초 1컵에 담가 주세요."]},
+        {"name": "딸기잼", "method": "home", "cat": "양식·기타", "servings": "2인분",
+         "ing": [["딸기", "2컵", "strawberry"]], "steps": ["설탕 1컵을 넣어 주세요."]},
+        {"name": "매실청", "method": "home", "cat": "양식·기타", "servings": "2인분",
+         "ing": [["설탕", "1kg", "sugar"]], "steps": ["매실과 설탕을 1:1로 담가 주세요."]},
+        {"name": "칠리소스", "method": "home", "cat": "양식·기타", "servings": "2인분",
+         "ing": [["고추장", "2큰술", "gochujang"]], "steps": ["케첩 1큰술과 섞어 주세요."]},
+        {"name": "수제 드레싱", "method": "home", "cat": "양식·기타", "servings": "2인분",
+         "ing": [["올리브유", "2큰술", "olive_oil"]], "steps": ["식초 1큰술을 섞어 주세요."]},
+        {"name": "버터 쿠키", "method": "home", "cat": "양식·기타", "servings": "2인분",
+         "ing": [["버터", "100g", "butter"]], "steps": ["밀가루 200g을 섞어 주세요."]},
+        {"name": "초코 머핀", "method": "home", "cat": "양식·기타", "servings": "2인분",
+         "ing": [["밀가루", "150g", "flour"]], "steps": ["우유 1컵을 넣어 주세요."]},
+        {"name": "배추겉절이", "method": "home", "cat": "볶음·구이", "servings": "2인분",
+         "ing": [["배추", "1포기", "baechu"]], "steps": ["고춧가루 2큰술을 넣어 주세요."]},
+        {"name": "무 장아찌", "method": "home", "cat": "양식·기타", "servings": "1병",
+         "ing": [["무", "2개", "mu"]], "steps": ["간장 2컵에 담가 주세요."]},
+        {"name": "제육볶음 도시락", "method": "home", "cat": "볶음·구이", "servings": "1판",
+         "ing": [["돼지고기", "300g", "pork"]], "steps": ["고추장 2큰술로 볶아 주세요."]},
+        {"name": "두부 부침", "method": "home", "cat": "볶음·구이", "servings": "2인분",
+         "ing": [["두부", "적당량", "tofu"]], "steps": ["노릇하게 부쳐 주세요."]},
+    ]
+    fake_shown = [o["name"] for o in fake_hide if ui_of(o) is not False]
+    check(not fake_shown, f"장아찌·피클·잼·소스·쿠키·판 단위·분량 없는 메뉴는 버튼 없음 (보임 {fake_shown})")
+
+    fake_meal = [
+        {"name": "제육볶음", "method": "home", "cat": "볶음·구이", "servings": "2인분",
+         "ing": [["돼지고기", "300g", "pork"]], "steps": ["고추장 2큰술로 볶아 주세요."]},
+        {"name": "김치볶음밥", "method": "home", "cat": "밥·죽", "servings": "1인분",
+         "ing": [["밥", "1공기", "rice"]], "steps": ["김치 1컵을 볶아 주세요."]},
+        {"name": "된장찌개", "method": "home", "cat": "국·찌개", "servings": "2인분",
+         "ing": [["된장", "1큰술", "doenjang"]], "steps": ["물 3컵을 붓고 끓여 주세요."]},
+    ]
+    fake_hidden = [o["name"] for o in fake_meal if ui_of(o) is not True]
+    check(not fake_hidden, f"일반 한 끼 메뉴는 버튼 있음 (없음 {fake_hidden})")
+
+    delivery_ui = [i for i in (r["id"] for r in out) if js(ctx, "__t.hasServingUi(" + json.dumps(i) + ")") is not False]
+    check(not delivery_ui, f"배달·외식 메뉴에는 인분 버튼 없음 (보임 {delivery_ui[:3]})")
+
+    # ---------- 9-6. 레시피 드로어에서 실제로 환산되는지 ----------
+    kim_four = ctx.eval("__t.drawerFor('kimchi-fried-rice', 4)")
+    check("srv-row" in kim_four, "김치볶음밥 4인분 드로어에 인분 버튼")
+    check('class="ing-amt">2컵<' in kim_four, "김치볶음밥 4인분: 김치 1/2컵 → 2컵")
+    check('class="ing-amt">4공기<' in kim_four, "김치볶음밥 4인분: 밥 1공기 → 4공기")
+    check("김치국물 8큰술" in kim_four, "김치볶음밥 4인분: 만드는 법도 2큰술 → 8큰술")
+    check("2분간 볶아" in kim_four, "김치볶음밥 4인분: 조리 시간(2분)은 그대로")
+
+    kim_one = ctx.eval("__t.drawerFor('kimchi-fried-rice', 1)")
+    check('class="ing-amt">1/2컵<' in kim_one and "김치국물 2큰술" in kim_one,
+          "김치볶음밥 1인분: 김치 1/2컵·국물 2큰술")
+
+    oi_two = ctx.eval("__t.drawerFor('oi-muchim', 2)")
+    check("srv-row" not in oi_two and "인분 수" not in oi_two, "오이무침 드로어에 인분 버튼 없음")
+    check('class="ing-amt">2개<' in oi_two, "오이무침 재료 분량은 그대로 보임 (오이 2개)")
 
     ctx.eval("__t.setState({selected:[]})")
     drawer_miss = ctx.eval("__t.drawerFor('" + collected["id"] + "', 2)")

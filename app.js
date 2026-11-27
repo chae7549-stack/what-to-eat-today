@@ -123,7 +123,9 @@
     ];
     for (var i = 0; i < table.length; i++) {
       if (Math.abs(frac - table[i][0]) < 0.02) {
-        return (whole ? whole + " " : "") + table[i][1];
+        // 1 1/2 처럼 읽기 어려운 값은 1.5 로 보여 준다
+        if (whole) return String(Math.round(rounded * 10) / 10);
+        return table[i][1];
       }
     }
     return String(Math.round(rounded * 10) / 10);
@@ -164,6 +166,67 @@
     var factor = target / base;
     var scaled = scaleAmount(row[1] || "", factor);
     return readableAmount(row[1] || "", scaled);
+  }
+
+  /* ----- 조리 문장(만드는 법) 안의 분량도 같은 배수로 -----
+     요리 단위가 붙은 숫자만 바꾼다. 시간(분·초·시간), 온도(도·℃),
+     횟수(번·회·단계·인분), 지름(cm·mm)은 절대 건드리지 않는다. */
+  var QTY_UNIT = "(종이컵|테이블스푼|티스푼|작은술|큰술|스푼|숟가락|공기|봉지|포기|송이|꼬집|방울|국자|마리|컵|모|장|대|쪽|알|줄|단|봉|캔|팩|줌|개|kg|mL|ml|리터|L|g|Ts|ts|T|t)";
+  var QTY_TAIL = "(?=$|[\\s.,;:!?()\\[\\]{}~·…\"'\u201d\u2019]|를|을|은|는|이|가|도|만|씩|쯤|의|에|로|으로|과|와|나|부터|까지|정도|어치|가량|남짓|짜리|분량)";
+  var QTY_NUM = "(\\d+(?:\\.\\d+)?(?:\\s*\\/\\s*\\d+)?)";
+  var QTY_PATTERN = QTY_NUM + "(?:\\s*~\\s*" + QTY_NUM + ")?(\\s*)" + QTY_UNIT + QTY_TAIL;
+  var STEP_QTY_RE = new RegExp(QTY_PATTERN, "g");
+  var QTY_TEST_RE = new RegExp(QTY_PATTERN);
+
+  function scaleStepText(text, factor) {
+    var src = String(text || "");
+    if (!src || !factor || Math.abs(factor - 1) < 0.001) return src;
+    return src.replace(STEP_QTY_RE, function (whole, a, b, gap, unit) {
+      var first = formatNum(parseNum(a) * factor);
+      if (!first || first === "0") return whole;
+      var out = first;
+      if (b != null) {
+        var second = formatNum(parseNum(b) * factor);
+        if (second && second !== "0") out = out + "~" + second;
+      }
+      return out + gap + unit;
+    });
+  }
+
+  /* ----- 인분 수를 보여 줄 만한 메뉴인지 -----
+     반찬·양념·음료·구운 과자처럼 '몇 인분'이 어색한 메뉴에는 선택 버튼을 두지 않는다. */
+  var NON_MEAL_NAME_RE = new RegExp(
+    "(장아찌|피클|잼|무침|겉절이|드레싱|양념장|쿠키|머핀|스콘|마들렌|브라우니|케이크|스무디|에이드|주스|화채|수정과|식혜|젓갈|조림|절임)|(김치|청|소스|나물|잼)$"
+  );
+  var NON_SERVING_UNIT_RE = /(판|병|통|조각|개분|접시|그릇)\s*$/;
+
+  function hasScalableQty(dish) {
+    var rows = (dish && dish.ing) || [];
+    var i;
+    for (i = 0; i < rows.length; i++) {
+      var amt = String(rows[i][1] || "");
+      if (/\d/.test(amt)) return true;
+    }
+    var steps = (dish && dish.steps) || [];
+    for (i = 0; i < steps.length; i++) {
+      if (QTY_TEST_RE.test(String(steps[i] || ""))) return true;
+    }
+    return false;
+  }
+
+  function hasServingUi(dish) {
+    if (!dish || dish.method !== "home") return false;
+    if (dish.portion && dish.portion !== "meal") return false;
+    if (dish.cat === "반찬") return false;
+    var name = String(dish.name || "");
+    if (!/팬케이크|핫케이크/.test(name) && NON_MEAL_NAME_RE.test(name)) return false;
+    if (NON_SERVING_UNIT_RE.test(String(dish.servings || ""))) return false;
+    return hasScalableQty(dish);
+  }
+
+  function servingFactor(dish) {
+    if (!hasServingUi(dish)) return 1;
+    return currentServing(dish) / baseServings(dish);
   }
 
   /* ------------------------------------------------------------------
@@ -311,6 +374,12 @@
     {
       id: "kimchi-fried-rice", name: "김치볶음밥", emoji: "🍳", time: 10, level: 1,
       req: ["kimchi", "rice", "egg"], opt: ["pa", "ham", "cheese"],
+      servings: "1인분",
+      ing: [
+        ["김치", "1/2컵", "kimchi"], ["밥", "1공기", "rice"], ["계란", "1개", "egg"],
+        ["대파", "1/3대", "pa"], ["햄", "30g", "ham"], ["치즈", "1장", "cheese"],
+        ["식용유", "1큰술", "oil"], ["참기름", "1/2작은술", "sesame_oil"],
+      ],
       moods: ["alone", "hearty"], budget: "low", method: "home",
       steps: [
         "김치를 한입 크기로 썰고, 대파나 햄이 있으면 같이 다져 주세요.",
@@ -324,9 +393,15 @@
     {
       id: "gyeranmari", name: "계란말이", emoji: "🥚", time: 10, level: 1,
       req: ["egg", "pa"], opt: ["cheese", "carrot", "ham"],
+      servings: "2인분",
+      ing: [
+        ["계란", "3개", "egg"], ["대파", "1/2대", "pa"], ["치즈", "1장", "cheese"],
+        ["당근", "1/4개", "carrot"], ["햄", "30g", "ham"], ["소금", "1/3작은술", "salt"],
+        ["식용유", "1큰술", "oil"],
+      ],
       moods: ["alone", "light"], budget: "low", method: "home",
       steps: [
-        "계란 3개를 풀고 소금 한 꼮집과 잘게 썬 대파를 섞어 주세요.",
+        "계란 3개를 풀고 소금 1꼬집과 잘게 썬 대파를 섞어 주세요.",
         "약불로 줄인 팬에 계란물을 얇게 부어 주세요.",
         "가장자리가 익으면 사각으로 접어 주세요.",
         "계란물을 한 번 더 부어 접고, 김발로 모양을 잡으면 완성됩니다.",
@@ -337,12 +412,18 @@
     {
       id: "tuna-mayo", name: "참치마요덮밥", emoji: "🍚", time: 8, level: 1,
       req: ["tuna", "rice"], opt: ["egg", "pa", "cheese"],
+      servings: "1인분",
+      ing: [
+        ["참치캔", "1캔", "tuna"], ["밥", "1공기", "rice"], ["마요네즈", "2큰술", "mayo"],
+        ["계란", "1개", "egg"], ["대파", "1/3대", "pa"], ["치즈", "1장", "cheese"],
+        ["진간장", "1/2큰술", "ganjang_jin"],
+      ],
       moods: ["alone", "hearty"], budget: "low", method: "home",
       steps: [
         "참치캔 기름을 빼고 마요네즈 2큰술과 섞어 주세요.",
         "따뜻한 밥에 참치마요를 올려 주세요.",
         "계란이 있으면 반숙 프라이로 올리고 대파를 솔솔 뿌려 주세요.",
-        "간장 반 스푼을 둘러 비벼 드세요.",
+        "간장 1/2큰술을 둘러 비벼 드세요.",
       ],
       tip: "참치 기름을 완전히 빼야 느끼하지 않아요.",
       comment: "젓가락이 멈추지 않는 그 맛 🥄",
@@ -350,6 +431,11 @@
     {
       id: "dubu-kimchi", name: "두부김치", emoji: "🍲", time: 15, level: 1,
       req: ["tofu", "kimchi"], opt: ["pork", "pa"],
+      servings: "2인분",
+      ing: [
+        ["두부", "1모", "tofu"], ["김치", "1컵", "kimchi"], ["돼지고기", "150g", "pork"],
+        ["대파", "1/2대", "pa"], ["참기름", "1작은술", "sesame_oil"], ["식용유", "1큰술", "oil"],
+      ],
       moods: ["hearty", "night"], budget: "low", method: "home",
       steps: [
         "두부를 1.5cm 두께로 썰어 끓는 물에 1분 데쳐 주세요.",
@@ -363,12 +449,17 @@
     {
       id: "ganjang-gyeran-bap", name: "간장계란밥", emoji: "🍚", time: 5, level: 1,
       req: ["egg", "rice", "ganjang_jin"], opt: ["butter", "pa"],
+      servings: "1인분",
+      ing: [
+        ["계란", "1개", "egg"], ["밥", "1공기", "rice"], ["진간장", "1큰술", "ganjang_jin"],
+        ["참기름", "1/2큰술", "sesame_oil"], ["버터", "5g", "butter"], ["대파", "1/4대", "pa"],
+      ],
       moods: ["alone", "night"], budget: "low", method: "home",
       steps: [
         "따뜻한 밥에 계란 프라이를 올려 주세요.",
-        "간장 1큰술과 참기름 반 큰술을 둘러 주세요.",
+        "간장 1큰술과 참기름 1/2큰술을 둘러 주세요.",
         "노른자를 터뜨려 골고루 비벼 드세요.",
-        "버터 반 쪽을 더하면 고소함이 확 살아납니다.",
+        "버터 5g을 더하면 고소함이 확 살아납니다.",
       ],
       tip: "간장은 밥 위에 둘러야 짜지 않아요.",
       comment: "5분 요리의 정석 ⏱️",
@@ -376,12 +467,18 @@
     {
       id: "spam-mayo", name: "스팸마요덮밥", emoji: "🍱", time: 8, level: 1,
       req: ["ham", "rice"], opt: ["egg", "pa"],
+      servings: "1인분",
+      ing: [
+        ["햄", "100g", "ham"], ["밥", "1공기", "rice"], ["계란", "1개", "egg"],
+        ["대파", "1/3대", "pa"], ["마요네즈", "2큰술", "mayo"], ["진간장", "1/2큰술", "ganjang_jin"],
+        ["식용유", "1작은술", "oil"],
+      ],
       moods: ["alone", "hearty"], budget: "low", method: "home",
       steps: [
         "스팸을 도톰하게 썰어 노릇하게 구워 주세요.",
         "밥 위에 스팸을 올리고 마요네즈를 둘러 주세요.",
         "계란 프라이를 올리고 대파를 뿌려 주세요.",
-        "간장 반 스푼으로 간을 맞춰 비벼 드세요.",
+        "간장 1/2큰술로 간을 맞춰 비벼 드세요.",
       ],
       tip: "스팸은 키친타월에 눌러 기름을 빼면 담백해요.",
       comment: "한 그릇 순삭, 든든한 한 끼 🍱",
@@ -389,6 +486,12 @@
     {
       id: "kimchi-jjigae", name: "김치찌개", emoji: "🍲", time: 25, level: 2,
       req: ["kimchi", "pork", "tofu"], opt: ["pa", "onion", "mushroom"],
+      servings: "2인분",
+      ing: [
+        ["김치", "2컵", "kimchi"], ["돼지고기", "200g", "pork"], ["두부", "1/2모", "tofu"],
+        ["대파", "1대", "pa"], ["양파", "1/2개", "onion"], ["버섯", "50g", "mushroom"],
+        ["물", "3컵", "water"], ["고춧가루", "1큰술", "gochugaru"], ["식용유", "1큰술", "oil"],
+      ],
       moods: ["hearty", "hangover"], budget: "mid", method: "home",
       steps: [
         "돼지고기를 한입 크기로 썰어 팬에 볶아 주세요.",
@@ -402,10 +505,16 @@
     {
       id: "doenjang-jjigae", name: "된장찌개", emoji: "🍲", time: 25, level: 2,
       req: ["tofu", "potato", "onion", "doenjang"], opt: ["mushroom", "pa"],
+      servings: "2인분",
+      ing: [
+        ["두부", "1/2모", "tofu"], ["감자", "1개", "potato"], ["양파", "1/2개", "onion"],
+        ["된장", "1.5큰술", "doenjang"], ["버섯", "50g", "mushroom"], ["대파", "1/2대", "pa"],
+        ["물", "3컵", "water"],
+      ],
       moods: ["hearty"], budget: "mid", method: "home",
       steps: [
         "감자와 양파, 두부를 한입 크기로 썰어 주세요.",
-        "물 3컵에 된장 1큰술을 풀어 끓여 주세요.",
+        "물 3컵에 된장 1.5큰술을 풀어 끓여 주세요.",
         "감자부터 넣고 8분 끓인 뒤 두부와 양파를 넣어 주세요.",
         "대파를 넣고 3분 더 끓이면 완성됩니다.",
       ],
@@ -415,6 +524,13 @@
     {
       id: "budae-jjigae", name: "부대찌개", emoji: "🍲", time: 25, level: 2,
       req: ["ham", "kimchi", "ramen", "tofu"], opt: ["onion", "pa", "cheese"],
+      servings: "2인분",
+      ing: [
+        ["햄", "100g", "ham"], ["김치", "1컵", "kimchi"], ["라면", "1봉지", "ramen"],
+        ["두부", "1/2모", "tofu"], ["양파", "1/2개", "onion"], ["대파", "1대", "pa"],
+        ["치즈", "1장", "cheese"], ["고춧가루", "1큰술", "gochugaru"], ["진간장", "1큰술", "ganjang_jin"],
+        ["물", "4컵", "water"],
+      ],
       moods: ["hearty", "night"], budget: "mid", method: "home",
       steps: [
         "스팸과 두부, 김치를 먹기 좋게 썰어 냄비에 담아 주세요.",
@@ -428,11 +544,17 @@
     {
       id: "aglio", name: "알리오올리오", emoji: "🍝", time: 15, level: 2,
       req: ["pasta", "garlic"], opt: ["cheese", "mushroom"],
+      servings: "1인분",
+      ing: [
+        ["파스타면", "100g", "pasta"], ["마늘", "5쪽", "garlic"], ["올리브유", "3큰술", "olive_oil"],
+        ["치즈", "2큰술", "cheese"], ["버섯", "50g", "mushroom"], ["소금", "1/2작은술", "salt"],
+        ["물", "1/2컵", "water"], ["후추", "약간", "pepper"],
+      ],
       moods: ["alone", "light"], budget: "mid", method: "home",
       steps: [
         "파스타면을 소금물에 8분 삶아 주세요.",
         "올리브유에 편마늘을 약불로 노릇하게 볶아 주세요.",
-        "삶은 면과 면수 반 컵을 넣고 1분 볶아 주세요.",
+        "삶은 면과 면수 1/2컵을 넣고 1분 볶아 주세요.",
         "소금·후추로 간하고 치즈를 뿌려 완성됩니다.",
       ],
       tip: "면수는 소스가 면에 붙게 해 주는 열쇠예요.",
@@ -441,6 +563,12 @@
     {
       id: "tomato-pasta", name: "토마토파스타", emoji: "🍝", time: 20, level: 2,
       req: ["pasta", "tomato", "onion"], opt: ["garlic", "cheese", "mushroom"],
+      servings: "2인분",
+      ing: [
+        ["파스타면", "180g", "pasta"], ["토마토", "2개", "tomato"], ["양파", "1/2개", "onion"],
+        ["마늘", "3쪽", "garlic"], ["올리브유", "2큰술", "olive_oil"], ["치즈", "2큰술", "cheese"],
+        ["버섯", "50g", "mushroom"], ["소금", "1/2작은술", "salt"], ["후추", "약간", "pepper"],
+      ],
       moods: ["light", "hearty"], budget: "mid", method: "home",
       steps: [
         "양파와 마늘을 다져 올리브유에 볶아 주세요.",
@@ -454,6 +582,12 @@
     {
       id: "cream-pasta", name: "크림파스타", emoji: "🍝", time: 20, level: 2,
       req: ["pasta", "milk", "cheese"], opt: ["ham", "mushroom", "garlic"],
+      servings: "2인분",
+      ing: [
+        ["파스타면", "180g", "pasta"], ["우유", "1컵", "milk"], ["치즈", "2장", "cheese"],
+        ["햄", "50g", "ham"], ["버섯", "50g", "mushroom"], ["마늘", "2쪽", "garlic"],
+        ["버터", "1큰술", "butter"], ["후추", "약간", "pepper"],
+      ],
       moods: ["hearty"], budget: "mid", method: "home",
       steps: [
         "우유 1컵과 치즈 2장을 약불에 녹여 소스를 만들어 주세요.",
@@ -467,6 +601,12 @@
     {
       id: "tteokbokki", name: "떡볶이", emoji: "🍡", time: 15, level: 1,
       req: ["tteok", "gochujang"], opt: ["egg", "fishcake", "pa", "cheese"],
+      servings: "2인분",
+      ing: [
+        ["떡", "300g", "tteok"], ["고추장", "2큰술", "gochujang"], ["어묵", "100g", "fishcake"],
+        ["대파", "1대", "pa"], ["계란", "2개", "egg"], ["치즈", "1장", "cheese"],
+        ["설탕", "1큰술", "sugar"], ["물", "2컵", "water"],
+      ],
       moods: ["night", "hearty"], budget: "low", method: "home",
       steps: [
         "떡을 물에 5분 담가 말랑하게 해 주세요.",
@@ -480,6 +620,12 @@
     {
       id: "rabokki", name: "라볶이", emoji: "🍜", time: 18, level: 1,
       req: ["tteok", "ramen", "gochujang"], opt: ["fishcake", "egg", "cheese"],
+      servings: "2인분",
+      ing: [
+        ["떡", "200g", "tteok"], ["라면", "1봉지", "ramen"], ["고추장", "2큰술", "gochujang"],
+        ["어묵", "100g", "fishcake"], ["계란", "2개", "egg"], ["치즈", "1장", "cheese"],
+        ["설탕", "1큰술", "sugar"], ["물", "2컵", "water"],
+      ],
       moods: ["night", "hearty"], budget: "low", method: "home",
       steps: [
         "물 2컵에 고추장 2큰술, 설탕 1큰술을 풀어 끓여 주세요.",
@@ -493,6 +639,12 @@
     {
       id: "jeyuk", name: "제육볶음", emoji: "🥘", time: 20, level: 2,
       req: ["pork", "onion", "gochujang"], opt: ["garlic", "pa", "cabbage"],
+      servings: "2인분",
+      ing: [
+        ["돼지고기", "400g", "pork"], ["양파", "1개", "onion"], ["고추장", "2큰술", "gochujang"],
+        ["마늘", "3쪽", "garlic"], ["대파", "1대", "pa"], ["양배추", "100g", "cabbage"],
+        ["진간장", "1큰술", "ganjang_jin"], ["설탕", "1큰술", "sugar"], ["식용유", "1큰술", "oil"],
+      ],
       moods: ["hearty"], budget: "mid", method: "home",
       steps: [
         "돼지고기에 고추장 2큰술, 간장 1큰술, 설탕 1큰술로 밑간해 주세요.",
@@ -506,6 +658,11 @@
     {
       id: "gamjajeon", name: "감자전", emoji: "🥔", time: 15, level: 1,
       req: ["potato"], opt: ["onion", "pa"],
+      servings: "2인분",
+      ing: [
+        ["감자", "2개", "potato"], ["양파", "1/4개", "onion"], ["대파", "1/2대", "pa"],
+        ["소금", "1/2작은술", "salt"], ["식용유", "3큰술", "oil"],
+      ],
       moods: ["light", "alone"], budget: "low", method: "home",
       steps: [
         "감자 2개를 강판에 갈아 주세요.",
@@ -519,6 +676,12 @@
     {
       id: "eomuktang", name: "어묵탕", emoji: "🍢", time: 15, level: 1,
       req: ["fishcake", "pa"], opt: ["onion", "mushroom"],
+      servings: "2인분",
+      ing: [
+        ["어묵", "200g", "fishcake"], ["대파", "1대", "pa"], ["양파", "1/2개", "onion"],
+        ["버섯", "50g", "mushroom"], ["물", "3컵", "water"], ["다시마", "1장", "dashima"],
+        ["국간장", "1큰술", "ganjang_guk"], ["후추", "약간", "pepper"],
+      ],
       moods: ["hangover", "light"], budget: "low", method: "home",
       steps: [
         "어묵을 꼬치나 한입 크기로 준비해 주세요.",
@@ -532,6 +695,12 @@
     {
       id: "kongnamul-gukbap", name: "콩나물국밥", emoji: "🍲", time: 15, level: 1,
       req: ["bean", "rice"], opt: ["egg", "pa", "garlic"],
+      servings: "2인분",
+      ing: [
+        ["콩나물", "200g", "bean"], ["밥", "2공기", "rice"], ["계란", "2개", "egg"],
+        ["대파", "1대", "pa"], ["마늘", "1큰술", "garlic"], ["물", "4컵", "water"],
+        ["국간장", "1큰술", "ganjang_guk"], ["참기름", "1작은술", "sesame_oil"],
+      ],
       moods: ["hangover", "light"], budget: "low", method: "home",
       steps: [
         "콩나물을 씻어 물 4컵과 함께 끓여 주세요.",
@@ -545,6 +714,13 @@
     {
       id: "curry", name: "카레", emoji: "🍛", time: 25, level: 1,
       req: ["potato", "onion", "carrot", "curry"], opt: ["pork", "chicken", "rice"],
+      servings: "2인분",
+      ing: [
+        ["감자", "2개", "potato"], ["양파", "1개", "onion"], ["당근", "1/2개", "carrot"],
+        ["카레가루", "3큰술", "curry"], ["돼지고기", "200g", "pork"], ["닭고기", "200g", "chicken"],
+        ["밥", "2공기", "rice"],
+        ["물", "3컵", "water"], ["식용유", "1큰술", "oil"],
+      ],
       moods: ["hearty"], budget: "low", method: "home",
       steps: [
         "감자, 당근, 양파를 깍둑썰기하세요.",
@@ -558,6 +734,12 @@
     {
       id: "omurice", name: "오므라이스", emoji: "🍳", time: 20, level: 2,
       req: ["egg", "rice", "onion"], opt: ["ham", "cheese", "milk"],
+      servings: "1인분",
+      ing: [
+        ["계란", "2개", "egg"], ["밥", "1공기", "rice"], ["양파", "1/4개", "onion"],
+        ["햄", "40g", "ham"], ["치즈", "1장", "cheese"], ["우유", "1큰술", "milk"],
+        ["케첩", "2큰술", "ketchup"], ["버터", "1큰술", "butter"],
+      ],
       moods: ["alone", "hearty"], budget: "low", method: "home",
       steps: [
         "양파와 햄을 볶다가 밥과 케첩 2큰술을 넣어 볶아 주세요.",
@@ -571,6 +753,12 @@
     {
       id: "street-toast", name: "길거리토스트", emoji: "🍞", time: 10, level: 1,
       req: ["bread", "egg", "ham"], opt: ["cheese", "cabbage"],
+      servings: "1인분",
+      ing: [
+        ["식빵", "2장", "bread"], ["계란", "1개", "egg"], ["햄", "1장", "ham"],
+        ["치즈", "1장", "cheese"], ["양배추", "1/3컵", "cabbage"], ["케첩", "1큰술", "ketchup"],
+        ["설탕", "1작은술", "sugar"], ["버터", "1큰술", "butter"],
+      ],
       moods: ["alone", "light"], budget: "low", method: "home",
       steps: [
         "식빵을 팬에 살짝 구워 주세요.",
@@ -584,6 +772,11 @@
     {
       id: "kimchijeon", name: "김치전", emoji: "🌶️", time: 15, level: 1,
       req: ["kimchi", "flour"], opt: ["pa"],
+      servings: "2인분",
+      ing: [
+        ["김치", "1컵", "kimchi"], ["부침가루", "1컵", "flour"], ["대파", "1/2대", "pa"],
+        ["물", "1/2컵", "water"], ["식용유", "3큰술", "oil"],
+      ],
       moods: ["night", "hearty"], budget: "low", method: "home",
       steps: [
         "김치를 잘게 썰고 부침가루 1컵과 김치국물을 섞어 주세요.",
@@ -597,9 +790,14 @@
     {
       id: "gyeranjjim", name: "계란찜", emoji: "🥚", time: 12, level: 1,
       req: ["egg", "pa"], opt: ["carrot"],
+      servings: "2인분",
+      ing: [
+        ["계란", "3개", "egg"], ["대파", "1/2대", "pa"], ["당근", "1/4개", "carrot"],
+        ["물", "1/2컵", "water"], ["소금", "1/2작은술", "salt"], ["참기름", "1작은술", "sesame_oil"],
+      ],
       moods: ["hangover", "light"], budget: "low", method: "home",
       steps: [
-        "계란 3개에 물 반 컵, 소금을 넣고 풀어 주세요.",
+        "계란 3개에 물 1/2컵, 소금을 넣고 풀어 주세요.",
         "체에 한 번 걸러 냄비에 담아 주세요.",
         "약불에서 저어가며 6분 익혀 주세요.",
         "대파를 뿌리고 뚜껑을 덮어 1분 뜸 들여 주세요.",
@@ -610,6 +808,11 @@
     {
       id: "kimchi-ramyeon", name: "김치라면", emoji: "🍜", time: 8, level: 1,
       req: ["ramen", "kimchi"], opt: ["egg", "pa"],
+      servings: "1인분",
+      ing: [
+        ["라면", "1봉지", "ramen"], ["김치", "1/2컵", "kimchi"], ["계란", "1개", "egg"],
+        ["대파", "1/2대", "pa"], ["물", "550ml", "water"],
+      ],
       moods: ["night", "alone"], budget: "low", method: "home",
       steps: [
         "물 550ml를 끓이고 김치를 먼저 넣어 주세요.",
@@ -623,6 +826,11 @@
     {
       id: "cheese-ramyeon", name: "치즈라면", emoji: "🍜", time: 8, level: 1,
       req: ["ramen", "cheese"], opt: ["egg"],
+      servings: "1인분",
+      ing: [
+        ["라면", "1봉지", "ramen"], ["치즈", "1장", "cheese"], ["계란", "1개", "egg"],
+        ["물", "550ml", "water"], ["후추", "약간", "pepper"],
+      ],
       moods: ["night", "alone"], budget: "low", method: "home",
       steps: [
         "물 550ml에 스프를 넣고 끓여 주세요.",
@@ -636,6 +844,12 @@
     {
       id: "tuna-kimchi-stew", name: "참치김치찌개", emoji: "🍲", time: 20, level: 1,
       req: ["tuna", "kimchi"], opt: ["tofu", "pa"],
+      servings: "2인분",
+      ing: [
+        ["참치캔", "1캔", "tuna"], ["김치", "2컵", "kimchi"], ["두부", "1/2모", "tofu"],
+        ["대파", "1대", "pa"], ["물", "3컵", "water"], ["고춧가루", "1작은술", "gochugaru"],
+        ["참기름", "1작은술", "sesame_oil"],
+      ],
       moods: ["hearty", "hangover"], budget: "low", method: "home",
       steps: [
         "김치를 냄비에 넣고 3분 볶아 주세요.",
@@ -649,11 +863,17 @@
     {
       id: "dubu-jorim", name: "두부조림", emoji: "🍲", time: 15, level: 1,
       req: ["tofu", "ganjang_jin"], opt: ["pa", "onion"],
+      servings: "2인분",
+      ing: [
+        ["두부", "1모", "tofu"], ["진간장", "2큰술", "ganjang_jin"], ["대파", "1대", "pa"],
+        ["양파", "1/2개", "onion"], ["설탕", "1/2큰술", "sugar"], ["물", "3큰술", "water"],
+        ["식용유", "2큰술", "oil"], ["통깨", "1작은술", "sesame"],
+      ],
       moods: ["light", "alone"], budget: "low", method: "home",
       steps: [
         "두부를 도톰하게 썰어 물기를 빼 주세요.",
         "팬에 두부를 노릇하게 지져 주세요.",
-        "간장 2큰술, 물 3큰술, 설탕 반 큰술을 섞어 부어 주세요.",
+        "간장 2큰술, 물 3큰술, 설탕 1/2큰술을 섞어 부어 주세요.",
         "대파를 올리고 국물이 졸면 완성됩니다.",
       ],
       tip: "두부는 키친타월로 물기를 빼야 부서지지 않아요.",
@@ -662,6 +882,11 @@
     {
       id: "kongnamul-muchim", name: "콩나물무침", emoji: "🌱", time: 10, level: 1,
       req: ["bean", "garlic"], opt: ["pa"],
+      servings: "2인분",
+      ing: [
+        ["콩나물", "200g", "bean"], ["마늘", "1작은술", "garlic"], ["대파", "1/2대", "pa"],
+        ["소금", "1/2작은술", "salt"], ["참기름", "1큰술", "sesame_oil"], ["통깨", "1작은술", "sesame"],
+      ],
       moods: ["light"], budget: "low", method: "home",
       steps: [
         "콩나물을 끓는 물에 3분 삶아 주세요.",
@@ -675,11 +900,17 @@
     {
       id: "gamja-jorim", name: "감자조림", emoji: "🥔", time: 20, level: 1,
       req: ["potato", "ganjang_jin"], opt: ["onion", "carrot"],
+      servings: "2인분",
+      ing: [
+        ["감자", "3개", "potato"], ["진간장", "3큰술", "ganjang_jin"], ["양파", "1/2개", "onion"],
+        ["당근", "1/2개", "carrot"], ["설탕", "1큰술", "sugar"], ["물", "1/2컵", "water"],
+        ["참기름", "1작은술", "sesame_oil"], ["통깨", "1작은술", "sesame"], ["식용유", "1큰술", "oil"],
+      ],
       moods: ["light", "alone"], budget: "low", method: "home",
       steps: [
         "감자를 한입 크기로 썰어 물기를 빼 주세요.",
         "팬에 기름을 두르고 감자를 노릇하게 볶아 주세요.",
-        "간장 3큰술, 물 반 컵, 설탕 1큰술을 넣고 끓여 주세요.",
+        "간장 3큰술, 물 1/2컵, 설탕 1큰술을 넣고 끓여 주세요.",
         "국물이 졸면 참기름과 통깨로 마무리하세요.",
       ],
       tip: "감자를 먼저 볶으면 으깨지지 않아요.",
@@ -688,6 +919,13 @@
     {
       id: "beoseot-bokkeum", name: "버섯볶음", emoji: "🍄", time: 12, level: 1,
       req: ["mushroom", "garlic"], opt: ["butter", "onion"],
+      servings: "2인분",
+      portion: "banchan",
+      ing: [
+        ["버섯", "200g", "mushroom"], ["마늘", "3쪽", "garlic"], ["버터", "1큰술", "butter"],
+        ["양파", "1/2개", "onion"], ["소금", "1/3작은술", "salt"], ["후추", "약간", "pepper"],
+        ["식용유", "1큰술", "oil"],
+      ],
       moods: ["light", "alone"], budget: "low", method: "home",
       steps: [
         "버섯을 먹기 좋게 찢어 주세요.",
@@ -701,6 +939,12 @@
     {
       id: "chicken-salad", name: "닭가슴살샐러드", emoji: "🥗", time: 15, level: 1,
       req: ["chicken", "cabbage"], opt: ["tomato", "cucumber", "onion"],
+      servings: "1인분",
+      ing: [
+        ["닭고기", "150g", "chicken"], ["양배추", "2컵", "cabbage"], ["토마토", "1개", "tomato"],
+        ["오이", "1/2개", "cucumber"], ["양파", "1/4개", "onion"], ["올리브유", "1큰술", "olive_oil"],
+        ["레몬즙", "1큰술", "lemon_juice"], ["소금", "1/3작은술", "salt"], ["후추", "약간", "pepper"],
+      ],
       moods: ["light"], budget: "mid", method: "home",
       steps: [
         "닭가슴살을 소금·후추로 밑간해 팬에 구워 주세요.",
@@ -714,6 +958,12 @@
     {
       id: "chicken-fried-rice", name: "닭가슴살볶음밥", emoji: "🍚", time: 15, level: 2,
       req: ["chicken", "rice", "egg"], opt: ["onion", "pa", "carrot"],
+      servings: "1인분",
+      ing: [
+        ["닭고기", "150g", "chicken"], ["밥", "1공기", "rice"], ["계란", "1개", "egg"],
+        ["양파", "1/4개", "onion"], ["대파", "1/2대", "pa"], ["당근", "1/3개", "carrot"],
+        ["진간장", "1큰술", "ganjang_jin"], ["식용유", "1큰술", "oil"],
+      ],
       moods: ["alone", "light"], budget: "mid", method: "home",
       steps: [
         "닭가슴살을 잘게 썰어 소금·후추로 밑간해 주세요.",
@@ -727,6 +977,12 @@
     {
       id: "oi-muchim", name: "오이무침", emoji: "🥒", time: 8, level: 1,
       req: ["cucumber", "garlic", "gochugaru"], opt: ["onion"],
+      servings: "2인분",
+      ing: [
+        ["오이", "2개", "cucumber"], ["마늘", "1작은술", "garlic"], ["고춧가루", "1큰술", "gochugaru"],
+        ["양파", "1/4개", "onion"], ["양조식초", "1큰술", "vinegar"], ["설탕", "1큰술", "sugar"],
+        ["소금", "1/2작은술", "salt"], ["통깨", "1작은술", "sesame"],
+      ],
       moods: ["light", "hangover"], budget: "low", method: "home",
       steps: [
         "오이를 반달 모양으로 썰어 소금에 5분 절여 주세요.",
@@ -740,6 +996,12 @@
     {
       id: "pork-cabbage", name: "돼지고기 양배추볶음", emoji: "🥬", time: 15, level: 2,
       req: ["pork", "cabbage", "gochujang"], opt: ["pa"],
+      servings: "2인분",
+      ing: [
+        ["돼지고기", "300g", "pork"], ["양배추", "300g", "cabbage"], ["고추장", "1큰술", "gochujang"],
+        ["대파", "1대", "pa"], ["진간장", "1큰술", "ganjang_jin"], ["굴소스", "1큰술", "gul_sauce"],
+        ["후추", "약간", "pepper"], ["식용유", "1큰술", "oil"],
+      ],
       moods: ["hearty"], budget: "mid", method: "home",
       steps: [
         "양배추를 한입 크기로 썰어 주세요.",
@@ -753,9 +1015,15 @@
     {
       id: "french-toast", name: "프렌치토스트", emoji: "🍞", time: 12, level: 1,
       req: ["bread", "egg", "milk"], opt: ["butter", "cheese"],
+      servings: "1인분",
+      ing: [
+        ["식빵", "2장", "bread"], ["계란", "1개", "egg"], ["우유", "1/2컵", "milk"],
+        ["버터", "1큰술", "butter"], ["설탕", "1큰술", "sugar"], ["꿀", "1큰술", "honey"],
+        ["치즈", "1장", "cheese"],
+      ],
       moods: ["alone", "light"], budget: "low", method: "home",
       steps: [
-        "계란 1개와 우유 반 컵, 설탕 1큰술을 섞어 주세요.",
+        "계란 1개와 우유 1/2컵, 설탕 1큰술을 섞어 주세요.",
         "식빵을 반으로 잘라 계란물에 적셔 주세요.",
         "버터 두른 팬에 약불로 노릇하게 구워 주세요.",
         "꿀이나 설탕을 뿌려 완성됩니다.",
@@ -766,6 +1034,11 @@
     {
       id: "ham-cheese-sandwich", name: "햄치즈샌드위치", emoji: "🥪", time: 8, level: 1,
       req: ["bread", "ham", "cheese"], opt: ["cabbage", "tomato"],
+      servings: "1인분",
+      ing: [
+        ["식빵", "2장", "bread"], ["햄", "2장", "ham"], ["치즈", "2장", "cheese"],
+        ["양배추", "1/3컵", "cabbage"], ["토마토", "1/2개", "tomato"],
+      ],
       moods: ["alone", "light"], budget: "low", method: "home",
       steps: [
         "식빵을 살짝 구워 주세요.",
@@ -779,11 +1052,17 @@
     {
       id: "bibimbap", name: "비빔밥", emoji: "🍚", time: 15, level: 1,
       req: ["rice", "egg", "gochujang"], opt: ["bean", "cucumber", "carrot", "mushroom"],
+      servings: "1인분",
+      ing: [
+        ["밥", "1공기", "rice"], ["계란", "1개", "egg"], ["고추장", "1큰술", "gochujang"],
+        ["콩나물", "60g", "bean"], ["오이", "1/3개", "cucumber"], ["당근", "1/3개", "carrot"],
+        ["버섯", "50g", "mushroom"], ["참기름", "1/2큰술", "sesame_oil"], ["설탕", "1/2작은술", "sugar"],
+      ],
       moods: ["hearty", "hangover"], budget: "low", method: "home",
       steps: [
         "냉장고 채소를 채 썰어 살짝 볶아 주세요.",
         "밥 위에 채소를 색 맞춰 돌려 담아 주세요.",
-        "고추장 1큰술, 참기름 반 큰술, 설탕 반 티스푼으로 양념장을 만들어 주세요.",
+        "고추장 1큰술, 참기름 1/2큰술, 설탕 1/2작은술으로 양념장을 만들어 주세요.",
         "계란 프라이를 올리고 비벼 드세요.",
       ],
       tip: "양념장에 식초 반 스푼을 넣으면 더 산뜻해요.",
@@ -792,11 +1071,18 @@
     {
       id: "eomuk-bokkeum", name: "어묵볶음", emoji: "🍢", time: 12, level: 1,
       req: ["fishcake", "ganjang_jin"], opt: ["onion", "pa"],
+      servings: "2인분",
+      portion: "banchan",
+      ing: [
+        ["어묵", "200g", "fishcake"], ["진간장", "1큰술", "ganjang_jin"], ["양파", "1/2개", "onion"],
+        ["대파", "1대", "pa"], ["물엿", "1큰술", "syrup"], ["고춧가루", "1/2작은술", "gochugaru"],
+        ["식용유", "1큰술", "oil"], ["통깨", "1작은술", "sesame"],
+      ],
       moods: ["night", "alone"], budget: "low", method: "home",
       steps: [
         "어묵을 먹기 좋게 썰어 끓는 물에 데쳐 주세요.",
         "팬에 기름을 두르고 어묵을 볶아 주세요.",
-        "간장 1큰술, 물엿 1큰술, 고춧가루 반 티스푼을 넣어 주세요.",
+        "간장 1큰술, 물엿 1큰술, 고춧가루 1/2작은술을 넣어 주세요.",
         "대파와 통깨를 뿌려 완성됩니다.",
       ],
       tip: "물엿 대신 설탕 반 스푼도 괜찮아요.",
@@ -805,6 +1091,12 @@
     {
       id: "potato-soup", name: "감자수프", emoji: "🥔", time: 20, level: 1,
       req: ["potato", "milk", "butter"], opt: ["onion", "bread"],
+      servings: "2인분",
+      ing: [
+        ["감자", "2개", "potato"], ["우유", "1컵", "milk"], ["버터", "1큰술", "butter"],
+        ["양파", "1/2개", "onion"], ["식빵", "1장", "bread"], ["물", "2컵", "water"],
+        ["소금", "1/2작은술", "salt"],
+      ],
       moods: ["light"], budget: "low", method: "home",
       steps: [
         "감자와 양파를 썰어 버터에 볶아 주세요.",
@@ -818,11 +1110,17 @@
     {
       id: "dubu-butter", name: "두부버터구이", emoji: "🧈", time: 15, level: 1,
       req: ["tofu", "butter"], opt: ["ganjang_jin", "pa"],
+      servings: "2인분",
+      portion: "banchan",
+      ing: [
+        ["두부", "1모", "tofu"], ["버터", "1큰술", "butter"], ["진간장", "1/2큰술", "ganjang_jin"],
+        ["대파", "1/2대", "pa"],
+      ],
       moods: ["light", "alone"], budget: "low", method: "home",
       steps: [
         "두부 물기를 빼고 도톰하게 썰어 주세요.",
         "팬에 버터를 녹이고 두부를 노릇하게 구워 주세요.",
-        "간장 반 스푼을 살짝 발라 주세요.",
+        "간장 1/2큰술을 살짝 발라 주세요.",
         "대파를 뿌려 완성됩니다.",
       ],
       tip: "버터에 간장만 더해도 근사한 안주가 돼요.",
@@ -831,10 +1129,16 @@
     {
       id: "tuna-potato-jorim", name: "참치감자조림", emoji: "🍚", time: 20, level: 2,
       req: ["tuna", "potato", "ganjang_jin"], opt: ["onion"],
+      servings: "2인분",
+      ing: [
+        ["참치캔", "1캔", "tuna"], ["감자", "2개", "potato"], ["진간장", "2큰술", "ganjang_jin"],
+        ["양파", "1/2개", "onion"], ["설탕", "1큰술", "sugar"], ["물", "1/2컵", "water"],
+        ["식용유", "1큰술", "oil"],
+      ],
       moods: ["alone"], budget: "low", method: "home",
       steps: [
         "감자를 썰어 기름에 살짝 볶아 주세요.",
-        "간장 2큰술, 설탕 1큰술, 물 반 컵을 넣고 끓여 주세요.",
+        "간장 2큰술, 설탕 1큰술, 물 1/2컵을 넣고 끓여 주세요.",
         "감자가 익으면 참치를 넣어 주세요.",
         "국물이 졸면 대파를 뿌려 마무리하세요.",
       ],
@@ -844,6 +1148,12 @@
     {
       id: "tteokguk", name: "떡국", emoji: "🍡", time: 20, level: 1,
       req: ["tteok", "egg", "ganjang_guk"], opt: ["pa", "mushroom"],
+      servings: "2인분",
+      ing: [
+        ["떡", "300g", "tteok"], ["계란", "1개", "egg"], ["국간장", "1큰술", "ganjang_guk"],
+        ["대파", "1대", "pa"], ["버섯", "30g", "mushroom"], ["물", "4컵", "water"],
+        ["참기름", "1작은술", "sesame_oil"],
+      ],
       moods: ["hangover", "hearty"], budget: "low", method: "home",
       steps: [
         "떡을 물에 10분 담가 불려 주세요.",
@@ -859,6 +1169,12 @@
     {
       id: "balsamic-salad", name: "발사믹 샐러드", emoji: "🥗", time: 10, level: 1,
       req: ["sangchu", "tomato", "balsamic"], opt: ["olive_oil", "cheese", "onion", "nut"],
+      servings: "1인분",
+      ing: [
+        ["상추", "5장", "sangchu"], ["토마토", "1개", "tomato"], ["발사믹식초", "1큰술", "balsamic"],
+        ["올리브유", "2큰술", "olive_oil"], ["치즈", "2큰술", "cheese"], ["양파", "1/4개", "onion"],
+        ["견과류", "1큰술", "nut"], ["소금", "1/3작은술", "salt"], ["후추", "약간", "pepper"],
+      ],
       moods: ["light"], budget: "low", method: "home",
       steps: [
         "상추와 토마토를 먹기 좋게 씻어 물기를 완전히 빼 주세요.",
@@ -872,6 +1188,12 @@
     {
       id: "coconut-noodle", name: "집에서 만드는 쌀국수", emoji: "🍜", time: 25, level: 2,
       req: ["rice_noodle", "chicken", "pa", "onion"], opt: ["lemon_juice", "gochu", "fish_sauce", "cilantro"],
+      servings: "2인분",
+      ing: [
+        ["쌀국수면", "150g", "rice_noodle"], ["닭고기", "200g", "chicken"], ["대파", "1대", "pa"],
+        ["양파", "1개", "onion"], ["레몬즙", "1큰술", "lemon_juice"], ["청양고추", "1개", "gochu"],
+        ["액젓", "1큰술", "fish_sauce"], ["고수", "약간", "cilantro"], ["물", "1.5L", "water"],
+      ],
       moods: ["hangover", "light"], budget: "mid", method: "home",
       steps: [
         "닭고기와 양파, 대파를 넣고 20분 끓여 육수를 만들어 주세요.",
@@ -886,6 +1208,12 @@
     {
       id: "barley-bibimbap", name: "보리비빔밥", emoji: "🍚", time: 25, level: 1,
       req: ["barley", "rice", "buchu", "gochujang"], opt: ["egg", "carrot", "sesame_oil"],
+      servings: "1인분",
+      ing: [
+        ["보리", "1/3컵", "barley"], ["밥", "1/2공기", "rice"], ["부추", "40g", "buchu"],
+        ["고추장", "1큰술", "gochujang"], ["계란", "1개", "egg"], ["당근", "1/3개", "carrot"],
+        ["참기름", "1큰술", "sesame_oil"],
+      ],
       moods: ["light", "hearty"], budget: "low", method: "home",
       steps: [
         "보리는 30분 불려 밥과 함께 고슬고슬하게 지어 주세요.",
@@ -899,6 +1227,11 @@
     {
       id: "oat-banana-porridge", name: "오트밀 바나나죽", emoji: "🥣", time: 8, level: 1,
       req: ["oat", "milk", "banana"], opt: ["honey", "nut", "blueberry"],
+      servings: "1인분",
+      ing: [
+        ["오트밀", "3큰술", "oat"], ["우유", "1컵", "milk"], ["바나나", "1개", "banana"],
+        ["꿀", "1큰술", "honey"], ["견과류", "1큰술", "nut"], ["블루베리", "1/4컵", "blueberry"],
+      ],
       moods: ["light"], budget: "low", method: "home",
       steps: [
         "우유 1컵을 냄비에 붓고 약불로 데워 주세요.",
@@ -912,6 +1245,12 @@
     {
       id: "duck-bokkeum", name: "오리 주물럭", emoji: "🦆", time: 20, level: 2,
       req: ["duck", "onion", "pa", "gochujang"], opt: ["garlic", "sugar", "sesame_oil"],
+      servings: "2인분",
+      ing: [
+        ["오리", "400g", "duck"], ["양파", "1개", "onion"], ["대파", "1대", "pa"],
+        ["고추장", "2큰술", "gochujang"], ["마늘", "3쪽", "garlic"], ["설탕", "1큰술", "sugar"],
+        ["참기름", "1큰술", "sesame_oil"], ["진간장", "1큰술", "ganjang_jin"],
+      ],
       moods: ["hearty", "night"], budget: "mid", method: "home",
       steps: [
         "오리고기는 한입 크기로 썰어 물기를 닦아 주세요.",
@@ -926,10 +1265,16 @@
     {
       id: "gopchang-bokkeum", name: "곱창 볶음", emoji: "🍢", time: 25, level: 3,
       req: ["gopchang", "onion", "pa", "gochugaru"], opt: ["garlic", "sugar", "sesame_oil"],
+      servings: "2인분",
+      ing: [
+        ["곱창", "400g", "gopchang"], ["양파", "1개", "onion"], ["대파", "1대", "pa"],
+        ["고춧가루", "2큰술", "gochugaru"], ["마늘", "3쪽", "garlic"], ["설탕", "1/2큰술", "sugar"],
+        ["참기름", "1큰술", "sesame_oil"], ["진간장", "1큰술", "ganjang_jin"],
+      ],
       moods: ["night", "hearty"], budget: "mid", method: "home",
       steps: [
         "곱창은 밀가루로 주물러 씻고 물기를 빼 주세요.",
-        "고춧가루 2큰술, 간장 1큰술, 설탕 반 큰술로 양념을 만들어 주세요.",
+        "고춧가루 2큰술, 간장 1큰술, 설탕 1/2큰술로 양념을 만들어 주세요.",
         "센 불에 곱창을 볶아 기름을 내 주세요.",
         "양파와 대파, 다진 마늘을 넣고 함께 볶아 주세요.",
         "양념을 넣고 2분 더 볶은 뒤 참기름을 두르면 완성됩니다.",
@@ -940,6 +1285,11 @@
     {
       id: "edamame-muchim", name: "마늘 에다마메", emoji: "🫛", time: 10, level: 1,
       req: ["edamame", "garlic"], opt: ["salt", "sesame_oil", "gochu"],
+      servings: "2인분",
+      ing: [
+        ["에다마메", "300g", "edamame"], ["마늘", "1큰술", "garlic"], ["소금", "1작은술", "salt"],
+        ["참기름", "1큰술", "sesame_oil"], ["청양고추", "1개", "gochu"],
+      ],
       moods: ["light", "night"], budget: "low", method: "home",
       steps: [
         "에다마메는 끓는 물에 소금을 넣고 3분 삶아 주세요.",
@@ -953,6 +1303,12 @@
     {
       id: "mango-smoothie", name: "망고 스무디", emoji: "🥭", time: 5, level: 1,
       req: ["mango", "yogurt", "milk"], opt: ["honey", "banana"],
+      servings: "1인분",
+      portion: "drink",
+      ing: [
+        ["망고", "1개", "mango"], ["요거트", "1/2컵", "yogurt"], ["우유", "1/2컵", "milk"],
+        ["꿀", "1큰술", "honey"], ["바나나", "1/2개", "banana"],
+      ],
       moods: ["light"], budget: "low", method: "home",
       steps: [
         "망고는 껍질을 벗겨 한입 크기로 썰어 얼려 두세요.",
@@ -966,6 +1322,12 @@
     {
       id: "hwanggi-baeksuk", name: "황기 닭백숙", emoji: "🍲", time: 70, level: 2,
       req: ["chicken", "hwanggi", "garlic", "rice"], opt: ["insam", "daechu", "pa", "salt"],
+      servings: "2인분",
+      ing: [
+        ["닭고기", "1마리", "chicken"], ["황기", "20g", "hwanggi"], ["마늘", "6쪽", "garlic"],
+        ["밥", "1/2공기", "rice"], ["인삼", "1뿌리", "insam"], ["대추", "5개", "daechu"],
+        ["대파", "1대", "pa"], ["소금", "1큰술", "salt"], ["물", "2L", "water"],
+      ],
       moods: ["hearty"], budget: "mid", method: "home",
       steps: [
         "닭은 찬물에 30분 담가 핏물을 빼 주세요.",
@@ -980,11 +1342,17 @@
     {
       id: "oi-chomuchim", name: "오이 초무침", emoji: "🥒", time: 10, level: 1,
       req: ["cucumber", "brown_vinegar", "sugar"], opt: ["gochugaru", "garlic", "sesame"],
+      servings: "2인분",
+      ing: [
+        ["오이", "2개", "cucumber"], ["현미식초", "2큰술", "brown_vinegar"], ["설탕", "1큰술", "sugar"],
+        ["고춧가루", "1작은술", "gochugaru"], ["마늘", "1작은술", "garlic"], ["통깨", "1작은술", "sesame"],
+        ["소금", "1/2작은술", "salt"],
+      ],
       moods: ["light", "hangover"], budget: "low", method: "home",
       steps: [
         "오이는 어슷하게 썰어 소금에 5분 절여 주세요.",
         "물기를 꼭 짜고 그릇에 담아 주세요.",
-        "현미식초 2큰술, 설탕 1큰술, 소금 한 꼬집을 섞어 부어 주세요.",
+        "현미식초 2큰술, 설탕 1큰술, 소금 1꼬집을 섞어 부어 주세요.",
         "고춧가루와 다진 마늘을 넣고 조물조물 버무려 주세요.",
         "통깨를 뿌려 마무리하면 완성됩니다.",
       ],
@@ -998,13 +1366,29 @@
 
   (function buildRecipes() {
     DISHES.forEach(function (d) {
+      // 재료 분량은 DISHES 의 ing 표에서 가져오고, 필수·선택 목록 순서대로 늘어놓는다
+      var amounts = {};
+      (d.ing || []).forEach(function (row) { amounts[row[2]] = row; });
       var ing = [];
-      (d.req || []).forEach(function (id) { ing.push([ingLabel(id), "", id]); });
-      (d.opt || []).forEach(function (id) { ing.push([ingLabel(id), "", id]); });
+      (d.req || []).forEach(function (id) {
+        var row = amounts[id];
+        ing.push([row ? row[0] : ingLabel(id), row ? row[1] : "", id]);
+      });
+      (d.opt || []).forEach(function (id) {
+        var row = amounts[id];
+        ing.push([row ? row[0] : ingLabel(id), row ? row[1] : "", id]);
+      });
+      // 필수·선택에 없는 기본 양념도 분량과 함께 보여 준다
+      (d.ing || []).forEach(function (row) {
+        if ((d.req || []).indexOf(row[2]) === -1 && (d.opt || []).indexOf(row[2]) === -1) {
+          ing.push([row[0], row[1], row[2]]);
+        }
+      });
       RECIPES.push({
         id: d.id, name: d.name, emoji: d.emoji || "🍽️",
         cat: CURATED_CAT[d.id] || "양식·기타",
-        time: d.time || 15, level: d.level || 1, servings: "",
+        time: d.time || 15, level: d.level || 1, servings: d.servings || "",
+        portion: d.portion || "",
         moods: d.moods || ["hearty"], budget: d.budget || "low",
         method: d.method || "home",
         req: d.req || [], opt: d.opt || [],
@@ -2130,7 +2514,7 @@
   }
 
   function ingredientListHtml(dish, has) {
-    var target = currentServing(dish);
+    var target = hasServingUi(dish) ? currentServing(dish) : baseServings(dish);
     var html = '<ul class="ing-list">';
     dish.ing.forEach(function (row) {
       var name = row[0], amt = row[1] || "", id = row[2] || "";
@@ -2191,10 +2575,11 @@
     html += '<div class="drawer-body">';
 
     if (dish.method === "home") {
-      html += servingsHtml(dish);
+      var withSrv = hasServingUi(dish);
+      if (withSrv) html += servingsHtml(dish);
 
       html += '<div class="drawer-section"><h3>재료' +
-        ' <small class="srv-target">' + currentServing(dish) + "인분 기준</small></h3>";
+        (withSrv ? ' <small class="srv-target">' + currentServing(dish) + "인분 기준</small>" : "") + "</h3>";
       if (state.selected.length) {
         var mine = 0;
         dish.req.forEach(function (id) { if (has(id)) mine++; });
@@ -2206,8 +2591,10 @@
 
       if (dish.steps.length) {
         html += '<div class="drawer-section"><h3>만드는 법</h3><ol class="steps">';
+        var stepFactor = servingFactor(dish);
         dish.steps.forEach(function (s, i) {
-          html += "<li><b>" + (i + 1) + "</b><span>" + escapeHtml(s) + "</span></li>";
+          html += "<li><b>" + (i + 1) + "</b><span>" +
+            escapeHtml(scaleStepText(s, stepFactor)) + "</span></li>";
         });
         html += "</ol></div>";
       }
