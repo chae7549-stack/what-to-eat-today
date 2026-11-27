@@ -13,6 +13,18 @@
     <meta name="color-scheme" content="light" />
     <meta name="theme-color" content="#ff6b3d" />
     <link rel="canonical" href="https://chae7549-stack.github.io/what-to-eat-today/" />
+    <!-- SITE_ORIGIN: https://chae7549-stack.github.io/what-to-eat-today -->
+    <!-- 위 SITE_ORIGIN 줄이 이 사이트의 기준 주소입니다. Cloudflare Pages 등으로 옮길 때는
+         python3 tools/build_seo_pages.py --origin https://새주소.pages.dev 를 실행하면
+         이 줄과 canonical·sitemap·1,400여 개 레시피 페이지 주소가 한 번에 바뀝니다. -->
+
+    <!-- ==================================================================
+         검색엔진 소유 확인 (Search Console / 네이버 서치어드바이저)
+         SEARCH_CONSOLE_GUIDE.md 를 보고, 두 서비스에서 받은 값만 아래 content=""
+         안에 붙여 넣고 주석을 풀면 됩니다. 값이 비어 있으면 아무 영향도 없습니다.
+         ================================================================== -->
+    <!-- <meta name="google-site-verification" content="" /> -->
+    <!-- <meta name="naver-site-verification" content="" /> -->
 
     <!-- iOS 홈 화면 추가(PWA)용 메타 -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
@@ -48,7 +60,7 @@
     />
     <meta name="twitter:image" content="https://chae7549-stack.github.io/what-to-eat-today/icons/icon-512.png" />
 
-    <link rel="stylesheet" href="./styles.css?v=16" />
+    <link rel="stylesheet" href="./styles.css?v=17" />
 
     <!-- ==================================================================
          수익화 설정 (MONETIZE_CONFIG)
@@ -168,6 +180,10 @@
               <span aria-hidden="true">🕘</span> 최근 본 메뉴
               <b id="recentCount">0</b>
             </button>
+            <button type="button" class="quick-chip" id="shopBtn" aria-haspopup="dialog" aria-pressed="false">
+              <span aria-hidden="true">🛒</span> 장보기
+              <b id="shopCount">0</b>
+            </button>
           </div>
 
           <!-- 레시피 검색 · 카테고리 -->
@@ -186,6 +202,9 @@
             </div>
             <div id="catPills" class="pills" role="group" aria-label="카테고리"></div>
           </div>
+
+          <!-- 오늘의 추천 (재료를 고르기 전 첫 화면) -->
+          <section id="dailyPick" class="daily-pick hidden" aria-label="오늘의 추천 메뉴"></section>
 
           <div id="resultHead" class="result-head">
             <h2>전체 집밥 레시피</h2>
@@ -271,6 +290,7 @@
           재료와 분량, 조리 순서는 직접 정리한 표준 안내입니다. 배달·외식 가격은 2026년 서울 기준 예상 범위예요.
         </p>
         <p class="foot-links">
+          <a href="./recipes/index.html">레시피 전체 목록</a>
           <a href="./about.html">서비스 소개</a>
           <a href="./privacy.html">개인정보처리방침</a>
           <a href="./terms.html">이용약관</a>
@@ -285,6 +305,41 @@
       <div class="drawer-panel" id="drawerPanel"></div>
     </div>
 
+    <!-- ================= 장보기 목록 ================= -->
+    <div id="shopSheet" class="drawer" role="dialog" aria-modal="true" aria-labelledby="shopTitle" hidden>
+      <div class="drawer-backdrop" data-act="shop-close"></div>
+      <div class="drawer-panel">
+        <div class="drawer-grip"></div>
+        <div class="drawer-head">
+          <div class="drawer-emoji" aria-hidden="true">🛒</div>
+          <div>
+            <div class="drawer-title" id="shopTitle">장보기 목록</div>
+            <div class="drawer-sub" id="shopSub">살 것만 담아 두고, 마트에서 하나씩 지워 보세요</div>
+          </div>
+          <button type="button" class="drawer-close" data-act="shop-close" aria-label="장보기 닫기">✕</button>
+        </div>
+        <div class="drawer-body">
+          <div id="shopList" class="shop-list"></div>
+          <form id="shopForm" class="shop-add" autocomplete="off">
+            <input
+              id="shopInput"
+              type="text"
+              maxlength="20"
+              placeholder="살 것 직접 추가 (예: 우유)"
+              aria-label="장보기 항목 직접 추가"
+            />
+            <button type="submit">추가</button>
+          </form>
+          <p class="shop-note">목록은 이 브라우저에만 저장돼요. 앱을 닫아도 그대로 남아 있어요.</p>
+        </div>
+        <div class="drawer-foot">
+          <button type="button" class="btn-soft" data-act="shop-copy">📋 목록 복사</button>
+          <button type="button" class="btn-soft" data-act="shop-clear-done">완료 지우기</button>
+          <button type="button" class="btn-primary" data-act="shop-close">닫기</button>
+        </div>
+      </div>
+    </div>
+
     <div id="toast" class="toast" role="status" aria-live="polite"></div>
 
     <noscript>
@@ -293,7 +348,7 @@
       </p>
     </noscript>
 
-    <script src="./data/recipes-data.js?v=16" defer></script>
-    <script src="./app.js?v=16" defer></script>
+    <script src="./data/recipes-data.js?v=17" defer></script>
+    <script src="./app.js?v=17" defer></script>
   </body>
 </html>

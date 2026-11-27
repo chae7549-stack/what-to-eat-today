@@ -152,7 +152,34 @@ globalThis.__t = {
   pushRecent: function (id) { pushRecent(id); },
   setFavView: function (v) { state.favView = v; return buildRows().map(function (r) { return r.dish.id; }); },
   setServing: function (id, n) { state.serving[id] = n; },
-  drawerFor: function (id, n) { state.serving[id] = n; return __t.drawerHtml(__t.rowById(id)); }
+  drawerFor: function (id, n) { state.serving[id] = n; return __t.drawerHtml(__t.rowById(id)); },
+
+  SHOP_KEY: SHOP_KEY,
+  shopState: function () { return shopList.slice(); },
+  shopLeft: function () { return shopLeft(); },
+  addShop: function (name, amt, id) { return addToShop(name, amt, id); },
+  addManyShop: function (items) { return addManyToShop(items); },
+  toggleShop: function (i) { toggleShopDone(i); },
+  removeShop: function (i) { removeShopItem(i); },
+  clearDone: function () { return clearDoneItems(); },
+  shopText: function () { return shopText(); },
+  resetShop: function () { shopList = []; saveShop(); },
+  reloadShop: function () { shopList = []; loadShop(); return shopList.slice(); },
+  missItems: function () { return currentMissItems(); },
+  missFor: function (id) { state.drawerDish = __t.rowById(id); return currentMissItems(); },
+  clearDrawer: function () { state.drawerDish = null; },
+  shopHtml: function () { renderShop(); return __el("shopList").innerHTML; },
+  shopBadge: function () { renderShopBadge(); return __el("shopCount").textContent; },
+  queryParam: queryParam,
+  setLocation: function (search, pathname, origin) {
+    location.search = search || "";
+    location.pathname = pathname || "/what-to-eat-eat-today/";
+    location.origin = origin || "https://example.com";
+  },
+  dishUrl: function (id) { return dishUrl(__t.rowById(id)); },
+  shareText: function (id) { return shareText(__t.rowById(id)); },
+  dailyHtml: function (salt) { DAILY_SALT = salt || 0; renderDaily(); return __el("dailyPick").innerHTML; },
+  drawerSub: function (id) { openDrawer(__t.rowById(id)); return __el("drawerPanel").innerHTML; },
 };
 """
 
@@ -666,6 +693,96 @@ def main():
     card_html = ctx.eval("__t.dishHtml({dish:__t.rowById('" + home[0]["id"] + "'), hit:[], missing:[], bonus:[], percent:0, ready:false}, false)")
     check("fav-btn" in card_html and "찜하기" in card_html, "요리 카드에 찜 하트 버튼")
 
+    # ---------- 9-7. 장보기 목록 (localStorage wtt:shop:v1) ----------
+    check(ctx.eval("String(__t.SHOP_KEY)") == "wtt:shop:v1", "장보기 저장 키는 wtt:shop:v1")
+    ctx.eval("__t.resetShop()")
+    check(js(ctx, "__t.shopState()") == [], "장보기 목록은 처음에 비어 있음")
+    check(js(ctx, "__t.addShop('대파','2/3대','pa')") is True, "부족한 재료를 장보기에 담기")
+    check(js(ctx, "__t.addShop('대파','1대','pa')") is False, "같은 재료는 두 번 담기지 않음")
+    check(js(ctx, "__t.addShop('두부','1/2모','tofu')") is True, "두 번째 재료 담기")
+    names = [x["name"] for x in js(ctx, "__t.shopState()")]
+    check(names == ["대파", "두부"], f"담은 순서대로 목록 ({names})")
+    check(js(ctx, "__t.shopLeft()") == 2, "남은(안 산) 항목 수 2")
+    saved = json.loads(ctx.eval("localStorage.getItem('wtt:shop:v1')"))
+    check(len(saved) == 2 and saved[0]["name"] == "대파", "장보기가 localStorage에 저장됨")
+    check(json.loads(ctx.eval("JSON.stringify(__t.reloadShop())"))[1]["name"] == "두부",
+          "페이지를 다시 열어도 장보기 목록이 남아 있음")
+    ctx.eval("__t.toggleShop(0)")
+    check(js(ctx, "__t.shopLeft()") == 1 and js(ctx, "__t.shopState()")[0]["done"] is True,
+          "마트에서 산 항목 체크")
+    ctx.eval("__t.toggleShop(0)")
+    check(js(ctx, "__t.shopLeft()") == 2, "체크를 다시 풀면 살 것에 돌아옴")
+    ctx.eval("__t.toggleShop(0)")
+    check(js(ctx, "__t.clearDone()") == 1 and len(js(ctx, "__t.shopState()")) == 1,
+          "완료한 항목만 지우기")
+    ctx.eval("__t.removeShop(0)")
+    check(js(ctx, "__t.shopState()") == [], "항목 하나 지우기")
+    ctx.eval("__t.addShop('대파','2/3대','pa')")
+    ctx.eval("__t.addShop('두부','1/2모','tofu')")
+    text = ctx.eval("__t.shopText()")
+    check("대파 2/3대" in text and "두부 1/2모" in text and "장보기" in text,
+          "장보기 목록을 글자로 복사할 수 있음")
+    check(ctx.eval("String(__t.shopBadge())") == "2", "상단 장보기 버튼에 남은 개수 표시")
+    shop_html = ctx.eval("__t.shopHtml()")
+    check("shop-check" in shop_html and "coupang.com" in shop_html and "data-shop-del" in shop_html,
+          "장보기 화면: 체크·쿠팡·삭제 버튼")
+
+    # 드로어의 부족한 재료에서 담기
+    ctx.eval("__t.resetShop()")
+    ctx.eval("__t.setState({selected:[], drawerDish:null})")
+    miss = json.loads(ctx.eval("JSON.stringify(__t.drawerFor('kimchi-fried-rice', 2));"))
+    single = json.loads(ctx.eval("JSON.stringify(__t.missFor('kimchi-fried-rice'))"))
+    check(len(single) >= 1 and single[0]["name"], f"부족한 재료 계산 ({[x['name'] for x in single][:3]})")
+    ctx.eval("__t.clearDrawer()")
+    drawer = ctx.eval("__t.drawerFor('kimchi-fried-rice', 2)")
+    check('data-shop-add=' in drawer and "장보기에 담기" in drawer,
+          "부족한 재료마다 '+ 담기' 버튼")
+    check("data-shop-addall" in drawer and "개 장보기에 담기" in drawer,
+          "부족한 재료 한 번에 담기 버튼")
+    miss_list = re.findall(r'data-shop-add="([^"]+)"', drawer)
+    check(len(miss_list) >= 2, f"부족한 재료 개수만큼 담기 버튼 ({len(miss_list)}개)")
+
+    # ---------- 9-8. 주소로 바로 열기 (?dish= · ?tab=) ----------
+    ctx.eval("__t.setLocation('?dish=kimchi-fried-rice','/what-to-eat-today/','https://chae7549-stack.github.io')")
+    check(ctx.eval("String(__t.queryParam('dish'))") == "kimchi-fried-rice", "?dish= 값 읽기")
+    check(ctx.eval("String(__t.queryParam('tab'))") == "", "없는 파라미터는 빈 값")
+    ctx.eval("__t.setLocation('?tab=roulette&dish=o1','/what-to-eat-today/','https://chae7549-stack.github.io')")
+    check(ctx.eval("String(__t.queryParam('tab'))") == "roulette"
+          and ctx.eval("String(__t.queryParam('dish'))") == "o1", "파라미터 두 개 함께 읽기")
+    ctx.eval("__t.setLocation('?dish=' + encodeURIComponent('김치'),'/','https://example.com')")
+    check(ctx.eval("String(__t.queryParam('dish'))") == "김치", "한글 인코딩 값 해석")
+    ctx.eval("__t.setLocation('?dish=kimchi-fried-rice','/what-to-eat-today/','https://chae7549-stack.github.io')")
+    url = ctx.eval("__t.dishUrl('kimchi-fried-rice')")
+    check(url == "https://chae7549-stack.github.io/what-to-eat-today/?dish=kimchi-fried-rice",
+          f"공유 주소가 ?dish= 로 열림 ({url})")
+    out_url = ctx.eval("__t.dishUrl('o1')")
+    check(out_url.endswith("/?dish=o1"), "배달 메뉴도 ?dish= 주소로 공유")
+    shared = ctx.eval("__t.shareText('kimchi-fried-rice')")
+    check("?dish=kimchi-fried-rice" in shared and "레시피 바로 보기" in shared,
+          "공유 문구에 레시피 딥링크 포함")
+    check("https://example.com/" not in shared, "공유 문구에 엉뚱한 주소 없음")
+
+    # ---------- 9-9. 오늘의 추천 ----------
+    ctx.eval("__t.setLocation('', '/what-to-eat-today/', 'https://chae7549-stack.github.io')")
+    ctx.eval("__t.setState({selected:[], query:'', cat:'all', favView:null})")
+    first_daily = ctx.eval("__t.dailyHtml(0)")
+    again_daily = ctx.eval("__t.dailyHtml(0)")
+    check(first_daily == again_daily, "오늘의 추천은 같은 날 새로고침해도 같은 메뉴")
+    check("오늘 이런 메뉴 어때요" in first_daily, "첫 화면에 '오늘 이런 메뉴 어때요?' 표시")
+    daily_ids = re.findall(r'data-daily-dish="([^"]+)"', first_daily)
+    check(len(daily_ids) == 3 and len(set(daily_ids)) == 3, f"오늘의 추천 3가지 ({daily_ids})")
+    known = {r["id"] for r in recipes}
+    check(all(i in known for i in daily_ids), "오늘의 추천은 실제 레시피")
+    check(all(r["method"] == "home" for r in recipes if r["id"] in daily_ids),
+          "오늘의 추천은 집밥 메뉴")
+    other_daily = ctx.eval("__t.dailyHtml(1)")
+    check(other_daily != first_daily, "'다른 메뉴'를 누르면 다른 조합")
+    ctx.eval("__t.setState({selected:['egg']})")
+    check(ctx.eval("__t.dailyHtml(0)") == "", "재료를 고르면 오늘의 추천은 숨음")
+    ctx.eval("__t.setState({selected:[], query:'김치'})")
+    check(ctx.eval("__t.dailyHtml(0)") == "", "검색 중에는 오늘의 추천을 숨김")
+    ctx.eval("__t.setState({query:''})")
+
     # ---------- 10. 정적 파일 ----------
     html_src = io.open(ROOT / "index.html", encoding="utf-8").read()
     app_src = io.open(ROOT / "app.js", encoding="utf-8").read()
@@ -763,21 +880,35 @@ def main():
         check("Disallow: /" not in robots, "robots.txt 가 전체를 막지 않음")
 
     # 새 기능 UI가 HTML/CSS/JS에 모두 있는지
-    for el_id in ("favBtn", "recentBtn", "favCount", "recentCount", "adSlot"):
+    for el_id in ("favBtn", "recentBtn", "favCount", "recentCount", "adSlot",
+                  "shopBtn", "shopCount", "shopSheet", "shopList", "shopSub",
+                  "shopForm", "shopInput", "shopTitle", "dailyPick"):
         check(el_id in ids_in_html, f"새 UI 요소 '{el_id}' 있음")
     check("./about.html" in html_src and "./privacy.html" in html_src and "./terms.html" in html_src,
           "index.html 푸터에 안내 페이지 링크")
+    check("./recipes/index.html" in html_src, "index.html 에 레시피 전체 목록 링크")
+    check("google-site-verification" in html_src and "naver-site-verification" in html_src,
+          "검색엔진 소유 확인 메타 자리 있음")
+    check("SITE_ORIGIN" in html_src, "index.html 에 기준 주소(SITE_ORIGIN) 표시")
+    check("chae7549-stack.github.io" not in app_src, "app.js 화면 코드에 주소를 직접 박지 않음")
+    check("data/recipes-data.js" in html_src, "데이터는 상대 경로로 불러옴")
 
     # CSS 에 새 UI 클래스가 있는지
     css_src = io.open(ROOT / "styles.css", encoding="utf-8").read()
     for cls in (".ing-tabs", ".sel-chips", ".price-card", ".chip.is-selected",
                 ".quick-bar", ".fav-btn", ".srv-row", ".srv-chip", ".buy-main",
-                ".buy-chip", ".ad-disclosure", ".foot-links"):
+                ".buy-chip", ".ad-disclosure", ".foot-links",
+                ".daily-pick", ".daily-card", ".miss-list", ".miss-add",
+                ".shop-item", ".shop-check", ".shop-add", ".shop-coupang"):
         check(cls in css_src, f"CSS 에 {cls} 스타일 있음")
 
     # 서비스 워커가 새 페이지를 캐시하는지
     for page in ("./index.html", "./about.html", "./privacy.html", "./terms.html"):
         check(page in sw_src, f"서비스 워커 캐시/이동 처리에 {page}")
+    check("./recipes/" not in sw_src.split("fetch", 1)[0],
+          "서비스 워커가 레시피 1,400여 개를 미리 캐시하지 않음")
+    check("recipes/" in sw_src and "navigate" in sw_src,
+          "서비스 워커가 레시피 페이지를 네트워크 우선으로 처리")
 
     size_kb = (ROOT / "data" / "recipes-data.js").stat().st_size / 1024
     print(f"데이터 파일 {size_kb:.0f}KB")

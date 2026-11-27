@@ -32,10 +32,13 @@
 
   var FAV_KEY = "wtt:fav:v1";
   var RECENT_KEY = "wtt:recent:v1";
+  var SHOP_KEY = "wtt:shop:v1";
   var RECENT_MAX = 12;
+  var SHOP_MAX = 60;
 
   var favIds = [];      // 찜한 메뉴 id (최근에 찜한 것이 앞)
   var recentIds = [];   // 최근 본 메뉴 id (최근 것이 앞)
+  var shopList = [];    // 장보기 목록 [{name, amt, id, done, at}]
 
   function readIdList(key) {
     try {
@@ -57,6 +60,7 @@
   function loadUserLists() {
     favIds = readIdList(FAV_KEY);
     recentIds = readIdList(RECENT_KEY).slice(0, RECENT_MAX);
+    loadShop();
   }
 
   function isFav(id) {
@@ -88,6 +92,108 @@
       if (RECIPES[i].id === id) return RECIPES[i];
     }
     return null;
+  }
+
+  /* ----- 🛒 장보기 목록 (로그인 없이 브라우저에만) ----- */
+  function shopKey(name) {
+    return normalize(name);
+  }
+
+  function loadShop() {
+    try {
+      var raw = localStorage.getItem(SHOP_KEY);
+      var list = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(list)) list = [];
+      shopList = list.map(function (it) {
+        return {
+          name: String((it && it.name) || "").slice(0, 30),
+          amt: String((it && it.amt) || "").slice(0, 24),
+          id: it && typeof it.id === "string" ? it.id : "",
+          done: !!(it && it.done),
+          at: Number(it && it.at) || 0,
+        };
+      }).filter(function (it) { return it.name; }).slice(0, SHOP_MAX);
+    } catch (e) {
+      shopList = [];
+    }
+  }
+
+  function saveShop() {
+    try {
+      localStorage.setItem(SHOP_KEY, JSON.stringify(shopList));
+    } catch (e) { /* 사생활 모드 등: 저장 실패는 무시 */ }
+    renderShopBadge();
+  }
+
+  function shopLeft() {
+    var n = 0;
+    for (var i = 0; i < shopList.length; i++) if (!shopList[i].done) n++;
+    return n;
+  }
+
+  // 같은 재료를 또 담으면 하나로 합친다 (분량은 처음 담은 값을 유지)
+  function addToShop(name, amt, id) {
+    var key = shopKey(name);
+    if (!key) return false;
+    for (var i = 0; i < shopList.length; i++) {
+      if (shopKey(shopList[i].name) === key) {
+        if (shopList[i].done) {
+          shopList[i].done = false;
+          saveShop();
+          return true;
+        }
+        return false;
+      }
+    }
+    if (shopList.length >= SHOP_MAX) shopList.shift();
+    shopList.push({
+      name: String(name).slice(0, 30),
+      amt: String(amt || "").slice(0, 24),
+      id: id || "",
+      done: false,
+      at: Date.now(),
+    });
+    saveShop();
+    return true;
+  }
+
+  function addManyToShop(items) {
+    var added = 0;
+    items.forEach(function (it) {
+      if (addToShop(it.name, it.amt, it.id)) added++;
+    });
+    return added;
+  }
+
+  function toggleShopDone(index) {
+    var it = shopList[index];
+    if (!it) return;
+    it.done = !it.done;
+    saveShop();
+    renderShop();
+  }
+
+  function removeShopItem(index) {
+    shopList.splice(index, 1);
+    saveShop();
+    renderShop();
+  }
+
+  function clearDoneItems() {
+    var before = shopList.length;
+    shopList = shopList.filter(function (it) { return !it.done; });
+    saveShop();
+    renderShop();
+    return before - shopList.length;
+  }
+
+  function shopText() {
+    var lines = ["🛒 장보기 목록"];
+    shopList.forEach(function (it) {
+      lines.push((it.done ? "[v] " : "- ") + it.name + (it.amt ? " " + it.amt : ""));
+    });
+    if (!shopList.length) lines.push("(비어 있음)");
+    return lines.join("\n");
   }
 
   /* ----- 인분 수에 맞춰 재료 분량 늘리고 줄이기 ----- */
@@ -1556,6 +1662,46 @@
     return "쉬움";
   }
 
+  /* ----- 주소(?dish=·?tab=)로 바로 열기 ----- */
+  function queryParam(name) {
+    var q = String((typeof location !== "undefined" && location.search) || "").replace(/^\?/, "");
+    if (!q) return "";
+    var parts = q.split("&");
+    for (var i = 0; i < parts.length; i++) {
+      if (!parts[i]) continue;
+      var eq = parts[i].indexOf("=");
+      var key = eq === -1 ? parts[i] : parts[i].slice(0, eq);
+      if (decodeURIComponent(key.replace(/\+/g, " ")) !== name) continue;
+      var value = eq === -1 ? "" : parts[i].slice(eq + 1);
+      try {
+        return decodeURIComponent(value.replace(/\+/g, " "));
+      } catch (e) {
+        return value;
+      }
+    }
+    return "";
+  }
+
+  // 지금 보고 있는 화면(탭·레시피)을 주소에 반영한다. 공유·뒤로가기가 자연스러워진다.
+  function syncUrl() {
+    if (typeof location === "undefined" || !/^https?:$/.test(location.protocol)) return;
+    if (!window.history || !window.history.replaceState) return;
+    var params = [];
+    if (state.tab === "roulette" && !state.drawerDish) params.push("tab=roulette");
+    if (state.drawerDish) params.push("dish=" + encodeURIComponent(state.drawerDish.id));
+    var next = location.pathname + (params.length ? "?" + params.join("&") : "") + (location.hash || "");
+    try {
+      window.history.replaceState(null, "", next);
+    } catch (e) { /* file:// 등에서는 무시 */ }
+  }
+
+  // 공유용 주소: ?dish={id} 로 바로 그 레시피가 열린다
+  function dishUrl(dish) {
+    if (typeof location === "undefined" || !/^https?:$/.test(location.protocol)) return "";
+    var dir = location.pathname.replace(/[^/]*$/, "");
+    return location.origin + dir + "?dish=" + encodeURIComponent(dish.id);
+  }
+
   function save() {
     try {
       localStorage.setItem(STORE_KEY, JSON.stringify({
@@ -1898,12 +2044,112 @@
   /* ------------------------------------------------------------------
      8. 렌더 — 요리 목록
      ------------------------------------------------------------------ */
+  /* ------------------------------------------------------------------
+     8-2. 오늘의 추천 (첫 화면용 3가지, 날짜별로 고정 · 다른 메뉴로 바꾸기 가능)
+     ------------------------------------------------------------------ */
+  var DAILY_SALT = 0;
+
+  // 계절에 어울리는 집밥 종류 (봄·여름·가을·겨울)
+  var SEASON_CATS = {
+    1: ["국·찌개", "전·부침", "밥·죽"], 2: ["국·찌개", "밥·죽", "전·부침"],
+    3: ["반찬", "볶음·구이", "밥·죽"], 4: ["반찬", "볶음·구이", "전·부침"],
+    5: ["밥·죽", "볶음·구이", "면·파스타"], 6: ["면·파스타", "분식·야식", "밥·죽"],
+    7: ["면·파스타", "분식·야식", "볶음·구이"], 8: ["면·파스타", "분식·야식", "반찬"],
+    9: ["볶음·구이", "밥·죽", "반찬"], 10: ["국·찌개", "전·부침", "반찬"],
+    11: ["국·찌개", "전·부침", "밥·죽"], 12: ["국·찌개", "전·부침", "분식·야식"],
+  };
+
+  function dailyPool() {
+    var month = new Date().getMonth() + 1;
+    var want = SEASON_CATS[month] || [];
+    var pool = RECIPES.filter(function (d) {
+      return d.curated && d.method === "home" && (want.indexOf(d.cat) !== -1);
+    });
+    if (pool.length < 6) {
+      pool = RECIPES.filter(function (d) { return d.curated && d.method === "home"; });
+    }
+    return pool;
+  }
+
+  function dailyDateSeed() {
+    var d = new Date();
+    var key = d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate();
+    var h = 0;
+    for (var i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) % 100000007;
+    return h;
+  }
+
+  function renderDaily() {
+    var box = el.dailyPick;
+    if (!box) return;
+    var show = !state.favView && !state.selected.length && !state.query && state.cat === "all";
+    if (!show) {
+      box.classList.add("hidden");
+      box.innerHTML = "";
+      return;
+    }
+
+    var pool = dailyPool();
+    if (pool.length < 3) {
+      box.classList.add("hidden");
+      return;
+    }
+    var seed = dailyDateSeed() + DAILY_SALT * 7919;
+    var used = {}, picks = [], guard = 0;
+    while (picks.length < 3 && guard < 400) {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      var idx = seed % pool.length;
+      guard++;
+      if (used[idx]) continue;
+      used[idx] = 1;
+      picks.push(pool[idx]);
+    }
+    if (!picks.length) {
+      box.classList.add("hidden");
+      return;
+    }
+
+    var now = new Date();
+    var dayLabel = (now.getMonth() + 1) + "월 " + now.getDate() + "일";
+    var html = '<div class="daily-head">' +
+      "<b>오늘 이런 메뉴 어때요?</b><span>" + escapeHtml(dayLabel) + " · " + (DAILY_SALT ? "새로 골랐어요" : "입맛 돋우기") + "</span>" +
+      '<button type="button" class="daily-shuffle" data-daily="shuffle" aria-label="오늘의 추천 다시 뽑기">🔀 다른 메뉴</button>' +
+      "</div>";
+    html += '<div class="daily-row">';
+    picks.forEach(function (d) {
+      html += '<button type="button" class="daily-card" data-daily-dish="' + escapeHtml(d.id) + '">';
+      html += '<span class="daily-emoji" aria-hidden="true">' + d.emoji + "</span>";
+      html += '<span class="daily-name">' + escapeHtml(shortName(d.name, 18)) + "</span>";
+      html += '<span class="daily-meta">' + formatTime(d.time) + " · " + levelText(d.level) + "</span>";
+      html += "</button>";
+    });
+    html += "</div>";
+    box.innerHTML = html;
+    box.classList.remove("hidden");
+
+    var shuffle = box.querySelector("[data-daily='shuffle']");
+    if (shuffle) {
+      shuffle.addEventListener("click", function () {
+        DAILY_SALT = (DAILY_SALT + 1) % 20;
+        if (!DAILY_SALT) DAILY_SALT = 1;
+        renderDaily();
+      });
+    }
+    Array.prototype.forEach.call(box.querySelectorAll("[data-daily-dish]"), function (btn) {
+      btn.addEventListener("click", function () {
+        var d = findDish(btn.getAttribute("data-daily-dish"));
+        if (d) openDrawer(d);
+      });
+    });
+  }
+
   function renderResults() {
     state.rows = buildRows();
     state.visible = 24;
     renderHead();
     paintList();
     renderQuickBar();
+    renderDaily();
   }
 
   function renderQuickBar() {
@@ -1911,6 +2157,152 @@
     if (el.recentCount) el.recentCount.textContent = recentIds.length;
     if (el.favBtn) el.favBtn.setAttribute("aria-pressed", state.favView === "fav" ? "true" : "false");
     if (el.recentBtn) el.recentBtn.setAttribute("aria-pressed", state.favView === "recent" ? "true" : "false");
+    renderShopBadge();
+  }
+
+  /* ------------------------------------------------------------------
+     8-1. 장보기 목록 화면
+     ------------------------------------------------------------------ */
+  function renderShopBadge() {
+    var n = shopLeft();
+    if (el.shopCount) el.shopCount.textContent = n;
+    if (el.shopBtn) el.shopBtn.setAttribute("aria-pressed", n > 0 ? "true" : "false");
+    if (el.shopBtn) {
+      el.shopBtn.setAttribute("aria-label", n ? "장보기 목록 " + n + "개" : "장보기 목록");
+    }
+  }
+
+  function renderShop() {
+    var box = el.shopList;
+    if (!box) return;
+    var left = shopLeft();
+    if (el.shopSub) {
+      el.shopSub.textContent = shopList.length
+        ? "살 것 " + left + "개 · 산 것 " + (shopList.length - left) + "개"
+        : "살 것만 담아 두고, 마트에서 하나씩 지워 보세요";
+    }
+
+    if (!shopList.length) {
+      box.innerHTML =
+        '<div class="shop-empty">' +
+        '<span aria-hidden="true">🧺</span>' +
+        "<p>장보기 목록이 비어 있어요.<br>레시피의 <b>부족한 재료</b>에서 <b>+ 담기</b>를 눌러 보세요.</p>" +
+        "</div>";
+      renderShopBadge();
+      return;
+    }
+
+    var html = '<ul class="shop-items">';
+    shopList.forEach(function (it, i) {
+      html += '<li class="shop-item' + (it.done ? " is-done" : "") + '">';
+      html += '<button type="button" class="shop-check' + (it.done ? " is-on" : "") +
+        '" data-shop-toggle="' + i + '" aria-pressed="' + (it.done ? "true" : "false") +
+        '" aria-label="' + escapeHtml(it.name) + (it.done ? " 살 것으로 되돌리기" : " 샀음으로 표시") + '">' +
+        (it.done ? "✓" : "") + "</button>";
+      html += '<span class="shop-name">' + escapeHtml(it.name) +
+        (it.amt ? ' <small>' + escapeHtml(it.amt) + "</small>" : "") + "</span>";
+      html += '<a class="shop-buy" href="' + escapeHtml(coupangLink(it.name)) +
+        '" target="_blank" rel="noopener noreferrer sponsored" aria-label="' +
+        escapeHtml(it.name) + ' 쿠팡에서 찾기">🛒</a>';
+      html += '<button type="button" class="shop-del" data-shop-del="' + i +
+        '" aria-label="' + escapeHtml(it.name) + ' 목록에서 빼기">✕</button>';
+      html += "</li>";
+    });
+    html += "</ul>";
+
+    var first = null;
+    for (var i = 0; i < shopList.length; i++) {
+      if (!shopList[i].done) { first = shopList[i]; break; }
+    }
+    if (first) {
+      html += '<a class="shop-coupang" href="' + escapeHtml(coupangLink(first.name)) +
+        '" target="_blank" rel="noopener noreferrer sponsored">🛒 안 산 재료 쿠팡에서 찾기 · ' +
+        escapeHtml(first.name) + "</a>";
+    }
+    if (CFG.coupangPartnersEnabled && CFG.coupangPartnersTag) {
+      html += '<p class="ad-disclosure">' + escapeHtml(CFG.coupangDisclosure) + "</p>";
+    }
+    box.innerHTML = html;
+    renderShopBadge();
+  }
+
+  function openShop() {
+    if (!el.shopSheet) return;
+    el.shopSheet.hidden = false;
+    document.body.style.overflow = "hidden";
+    renderShop();
+    var closeBtn = el.shopSheet.querySelector(".drawer-close");
+    if (closeBtn) closeBtn.focus({ preventScroll: true });
+  }
+
+  function closeShop() {
+    if (!el.shopSheet) return;
+    el.shopSheet.hidden = true;
+    document.body.style.overflow = el.drawer && !el.drawer.hidden ? "hidden" : "";
+  }
+
+  function bindShopUi() {
+    if (el.shopBtn) {
+      el.shopBtn.addEventListener("click", function () { openShop(); });
+    }
+    if (!el.shopSheet) return;
+
+    el.shopSheet.addEventListener("click", function (event) {
+      var target = event.target;
+      if (target === el.shopSheet || (target.classList && target.classList.contains("drawer-backdrop"))) {
+        closeShop();
+        return;
+      }
+      var act = target.closest ? target.closest("[data-act]") : null;
+      if (act && act.getAttribute("data-act") === "shop-close") {
+        closeShop();
+        return;
+      }
+      var toggle = target.closest ? target.closest("[data-shop-toggle]") : null;
+      if (toggle) {
+        toggleShopDone(Number(toggle.getAttribute("data-shop-toggle")));
+        return;
+      }
+      var del = target.closest ? target.closest("[data-shop-del]") : null;
+      if (del) {
+        removeShopItem(Number(del.getAttribute("data-shop-del")));
+      }
+    });
+
+    var copyBtn = el.shopSheet.querySelector("[data-act='shop-copy']");
+    if (copyBtn) {
+      copyBtn.addEventListener("click", function () {
+        if (!shopList.length) {
+          toast("장보기 목록이 비어 있어요");
+          return;
+        }
+        copyText(shopText()).then(function (ok) {
+          toast(ok ? "장보기 목록을 복사했어요 · 카톡에 붙여넣기 해보세요" : "복사가 안 됐어요. 길게 눌러 복사해 주세요");
+        });
+      });
+    }
+
+    var clearBtn = el.shopSheet.querySelector("[data-act='shop-clear-done']");
+    if (clearBtn) {
+      clearBtn.addEventListener("click", function () {
+        var n = clearDoneItems();
+        toast(n ? "산 것 " + n + "개를 지웠어요" : "지울 완료 항목이 없어요");
+      });
+    }
+
+    if (el.shopForm) {
+      el.shopForm.addEventListener("submit", function (event) {
+        event.preventDefault();
+        if (!el.shopInput) return;
+        var name = el.shopInput.value.trim();
+        if (!name) return;
+        var added = addToShop(name, "", "");
+        el.shopInput.value = "";
+        renderShop();
+        toast(added ? "'" + name + "' 장보기에 담았어요" : "이미 목록에 있어요");
+        el.shopInput.focus();
+      });
+    }
   }
 
   function setFavView(view) {
@@ -2435,7 +2827,8 @@
       lines.push(dish.price + " · " + dish.cat + " (배달·외식)");
       if (dish.tip) lines.push("💡 " + dish.tip);
     }
-    if (/^https?:/.test(location.protocol)) lines.push(location.href);
+    var url = dishUrl(dish);
+    if (url) lines.push("📍 레시피 바로 보기: " + url);
     return lines.join("\n");
   }
 
@@ -2529,25 +2922,61 @@
     return html;
   }
 
+  function dishIngRow(dish, id) {
+    var rows = (dish && dish.ing) || [];
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i][2] === id) return rows[i];
+    }
+    return null;
+  }
+
+  // 부족한 재료 id → { id, name, amt } (지금 고른 인분 기준 분량)
+  function missItems(dish, missing) {
+    var target = hasServingUi(dish) ? currentServing(dish) : baseServings(dish);
+    return missing.map(function (id) {
+      var row = dishIngRow(dish, id);
+      return {
+        id: id,
+        name: row && row[0] ? row[0] : ingLabel(id),
+        amt: row ? servingAmount(row, dish, target) : "",
+      };
+    });
+  }
+
   function missingBoxHtml(dish, missing) {
     if (!missing.length) return "";
+    var items = missItems(dish, missing);
+    var names = items.map(function (it) { return it.name; });
     var html = '<div class="drawer-section"><h3>🛒 부족한 재료</h3>';
-    html += '<p class="miss-note">' + missing.map(ingLabel).join(", ") + "만 더 있으면 돼요.</p>";
-    html += '<div class="buy-row">';
-    missing.slice(0, 4).forEach(function (id) {
-      var label = ingLabel(id);
-      html += '<a class="buy-chip" href="' + escapeHtml(coupangLink(label)) +
-        '" target="_blank" rel="noopener noreferrer sponsored">🛒 ' + escapeHtml(label) + "</a>";
+    html += '<p class="miss-note">' + escapeHtml(names.join(", ")) + "만 더 있으면 돼요.</p>";
+    html += '<ul class="miss-list">';
+    items.forEach(function (it) {
+      html += '<li class="miss-item">';
+      html += '<span class="miss-name">' + escapeHtml(it.name) +
+        (it.amt ? ' <small>' + escapeHtml(it.amt) + "</small>" : "") + "</span>";
+      html += '<a class="miss-shop-link" href="' + escapeHtml(coupangLink(it.name)) +
+        '" target="_blank" rel="noopener noreferrer sponsored" aria-label="' +
+        escapeHtml(it.name) + ' 쿠팡에서 찾기">🛒</a>';
+      html += '<button type="button" class="miss-add" data-shop-add="' + escapeHtml(it.id) +
+        '" aria-label="' + escapeHtml(it.name) + ' 장보기에 담기">+ 담기</button>';
+      html += "</li>";
     });
-    html += "</div>";
-    var first = ingLabel(missing[0]);
-    html += '<a class="buy-main" href="' + escapeHtml(coupangLink(first)) +
-      '" target="_blank" rel="noopener noreferrer sponsored">🛒 부족한 재료 쿠팡에서 찾기</a>';
+    html += "</ul>";
+    html += '<button type="button" class="buy-main shop-add-all" data-shop-addall="1">' +
+      "🛒 부족한 재료 " + items.length + "개 장보기에 담기</button>";
     if (CFG.coupangPartnersEnabled && CFG.coupangPartnersTag) {
       html += '<p class="ad-disclosure">' + escapeHtml(CFG.coupangDisclosure) + "</p>";
     }
     html += "</div>";
     return html;
+  }
+
+  // 지금 열린 레시피에서 아직 없는 필수 재료
+  function currentMissItems() {
+    var dish = state.drawerDish;
+    if (!dish) return [];
+    var has = function (id) { return !!id && state.selected.indexOf(id) !== -1; };
+    return missItems(dish, dish.req.filter(function (id) { return !has(id); }));
   }
 
   function openDrawer(dish) {
@@ -2639,6 +3068,48 @@
     var shareBtn = el.drawerPanel.querySelector('[data-act="share"]');
     if (shareBtn) shareBtn.addEventListener("click", function () { sharePick(dish); });
 
+    // 부족한 재료 → 장보기 담기
+    Array.prototype.forEach.call(el.drawerPanel.querySelectorAll("[data-shop-add]"), function (btn) {
+      btn.addEventListener("click", function () {
+        var id = btn.getAttribute("data-shop-add");
+        var pick = null;
+        currentMissItems().forEach(function (it) { if (!pick && it.id === id) pick = it; });
+        if (!pick) return;
+        var added = addToShop(pick.name, pick.amt, pick.id);
+        renderShop();
+        if (added) {
+          btn.classList.add("is-on");
+          btn.textContent = "✓ 담김";
+          toast(pick.name + " 장보기에 담았어요");
+        } else {
+          toast(pick.name + " 은(는) 이미 장보기에 있어요");
+        }
+      });
+    });
+
+    var addAll = el.drawerPanel.querySelector("[data-shop-addall]");
+    if (addAll) {
+      addAll.addEventListener("click", function () {
+        if (addAll.dataset.shopOpen === "1") {
+          openShop();
+          return;
+        }
+        var items = currentMissItems();
+        if (!items.length) return;
+        var added = addManyToShop(items);
+        renderShop();
+        Array.prototype.forEach.call(el.drawerPanel.querySelectorAll("[data-shop-add]"), function (b) {
+          b.classList.add("is-on");
+          b.textContent = "✓ 담김";
+        });
+        addAll.dataset.shopOpen = "1";
+        addAll.textContent = added
+          ? "🛒 장보기에 " + added + "개 담았어요 · 목록 열기"
+          : "🛒 장보기 목록 열기";
+        toast(added ? "부족한 재료 " + added + "개를 장보기에 담았어요" : "이미 장보기에 담겨 있어요");
+      });
+    }
+
     var heart = el.drawerPanel.querySelector(".drawer-fav");
     if (heart) {
       heart.addEventListener("click", function () {
@@ -2671,6 +3142,8 @@
 
     var closeBtn = el.drawerPanel.querySelector(".drawer-close");
     if (closeBtn) closeBtn.focus({ preventScroll: true });
+
+    syncUrl();
   }
 
   function drawerSub(dish) {
@@ -2683,8 +3156,9 @@
 
   function closeDrawer() {
     el.drawer.hidden = true;
-    document.body.style.overflow = "";
+    document.body.style.overflow = el.shopSheet && !el.shopSheet.hidden ? "hidden" : "";
     state.drawerDish = null;
+    syncUrl();
   }
 
   /* ------------------------------------------------------------------
@@ -2700,6 +3174,8 @@
     el.viewRoulette.classList.toggle("hidden", tab !== "roulette");
     window.scrollTo({ top: 0, behavior: "smooth" });
     save();
+    renderDaily();
+    syncUrl();
   }
 
   var toastTimer = null;
@@ -2817,9 +3293,18 @@
     el.favCount = $("#favCount");
     el.recentCount = $("#recentCount");
     el.adSlot = $("#adSlot");
+    el.shopBtn = $("#shopBtn");
+    el.shopCount = $("#shopCount");
+    el.shopSheet = $("#shopSheet");
+    el.shopList = $("#shopList");
+    el.shopSub = $("#shopSub");
+    el.shopForm = $("#shopForm");
+    el.shopInput = $("#shopInput");
+    el.dailyPick = $("#dailyPick");
 
     load();
     loadUserLists();
+    bindShopUi();
 
     if (el.ingSearch) {
       var ingTimer = null;
@@ -2917,7 +3402,12 @@
     });
 
     document.addEventListener("keydown", function (event) {
-      if (event.key === "Escape" && !el.drawer.hidden) closeDrawer();
+      if (event.key !== "Escape") return;
+      if (el.shopSheet && !el.shopSheet.hidden) {
+        closeShop();
+        return;
+      }
+      if (!el.drawer.hidden) closeDrawer();
     });
 
     if (el.heroStat) {
@@ -2937,10 +3427,26 @@
     setReel(null);
     renderResults();
     renderQuickBar();
+
+    // 주소로 바로 열기 (?tab=roulette, ?dish=kimchi-fried-rice)
+    var deepDishId = queryParam("dish");
+    var deepTab = queryParam("tab");
+    if (deepTab === "roulette" && !deepDishId) state.tab = "roulette";
+
     setTab(state.tab);
     initMonetization();
 
     el.result.classList.add("hidden");
+
+    if (deepDishId) {
+      var deepDish = findDish(deepDishId);
+      if (deepDish) {
+        openDrawer(deepDish);
+      } else {
+        toast("앗, 그 레시피를 찾지 못했어요");
+        syncUrl();
+      }
+    }
 
     // 서비스 워커 (오프라인 지원, https/localhost에서만)
     if ("serviceWorker" in navigator && /^https?:$/.test(location.protocol)) {

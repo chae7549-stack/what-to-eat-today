@@ -1,0 +1,461 @@
+/* ==========================================================================
+   냉장고 파먹기 — 개별 레시피 페이지 전용 스타일 (모바일 퍼스트, JS 없음)
+   recipes/{id}.html 에서 ../recipe-page.css 로 불러 씁니다.
+   앱 화면(styles.css)과 같은 색을 쓰되, 읽기 좋은 문서형으로 가볍게 만들었습니다.
+   ========================================================================== */
+
+:root {
+  --bg: #fffbf6;
+  --bg-deep: #f4e9dc;
+  --card: #ffffff;
+  --ink: #2a1d14;
+  --ink-2: #6b5647;
+  --ink-3: #a3907f;
+  --primary: #ff6b3d;
+  --primary-dark: #e8501f;
+  --primary-soft: #ffe8dc;
+  --green: #17a673;
+  --green-soft: #e4f8ef;
+  --line: #f1e2d2;
+  --line-strong: #e7d3bd;
+  --font: "Pretendard", -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo",
+    "Noto Sans KR", "Malgun Gothic", system-ui, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font);
+  color: var(--ink);
+  background: var(--bg);
+  line-height: 1.68;
+  letter-spacing: -0.01em;
+  -webkit-text-size-adjust: 100%;
+}
+
+a {
+  color: var(--primary-dark);
+  text-decoration: none;
+}
+
+/* ---------- 상단 ---------- */
+.rp-top {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: rgba(255, 251, 246, 0.94);
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  backdrop-filter: blur(8px);
+}
+
+.rp-brand {
+  font-size: 14px;
+  font-weight: 900;
+  color: var(--ink);
+  letter-spacing: -0.03em;
+}
+
+.rp-app {
+  margin-left: auto;
+  padding: 7px 12px;
+  border-radius: 999px;
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+/* ---------- 본문 ---------- */
+.rp-main {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 14px 16px 40px;
+}
+
+.rp-crumb {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-3);
+  line-height: 1.9;
+  word-break: keep-all;
+}
+
+.rp-crumb a {
+  color: var(--ink-2);
+}
+
+.rp-crumb span {
+  margin: 0 3px;
+  color: var(--line-strong);
+}
+
+.rp-crumb b {
+  color: var(--ink-2);
+}
+
+.rp-cat {
+  display: inline-block;
+  margin: 10px 0 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--green-soft);
+  color: #12805a;
+  font-size: 11.5px;
+  font-weight: 800;
+}
+
+h1 {
+  margin: 2px 0 8px;
+  font-size: 26px;
+  line-height: 1.28;
+  letter-spacing: -0.04em;
+  font-weight: 900;
+  word-break: keep-all;
+}
+
+.rp-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 0 0 14px;
+  padding: 0;
+  list-style: none;
+}
+
+.rp-meta li {
+  padding: 5px 10px;
+  border-radius: 10px;
+  background: #fff5ea;
+  border: 1px solid #ffe6cf;
+  font-size: 12px;
+  font-weight: 800;
+  color: #a9542a;
+}
+
+.rp-lead {
+  margin: 0 0 16px;
+  font-size: 14px;
+  color: var(--ink-2);
+  font-weight: 600;
+  line-height: 1.75;
+  word-break: keep-all;
+}
+
+.rp-cta {
+  display: block;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: linear-gradient(150deg, #fff2e4, #ffe1c8);
+  border: 1px solid #ffd3ac;
+  font-size: 13.5px;
+  font-weight: 900;
+  color: #b1441b;
+  text-align: center;
+  line-height: 1.5;
+  word-break: keep-all;
+}
+
+.rp-cta:active {
+  transform: translateY(1px);
+}
+
+section {
+  margin-top: 26px;
+}
+
+h2 {
+  margin: 0 0 10px;
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+}
+
+h2 small {
+  margin-left: 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  color: var(--ink-3);
+}
+
+/* ---------- 재료 표 ---------- */
+.rp-ing {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--card);
+  font-size: 13.5px;
+}
+
+.rp-ing caption {
+  caption-side: top;
+  text-align: left;
+  font-size: 11.5px;
+  color: var(--ink-3);
+  padding-bottom: 6px;
+}
+
+.rp-ing th {
+  background: #fff7ee;
+  font-size: 11.5px;
+  font-weight: 800;
+  color: var(--ink-3);
+  text-align: left;
+  padding: 8px 12px;
+}
+
+.rp-ing th:last-child,
+.rp-ing td:last-child {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.rp-ing td {
+  padding: 9px 12px;
+  border-top: 1px solid var(--line);
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.rp-ing td:last-child {
+  color: var(--ink-2);
+  font-weight: 700;
+}
+
+/* ---------- 만드는 법 ---------- */
+.rp-steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: rp-step;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.rp-steps li {
+  counter-increment: rp-step;
+  position: relative;
+  padding: 11px 13px 11px 44px;
+  border-radius: 14px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  font-size: 13.5px;
+  line-height: 1.7;
+  font-weight: 500;
+}
+
+.rp-steps li::before {
+  content: counter(rp-step);
+  position: absolute;
+  left: 12px;
+  top: 11px;
+  width: 22px;
+  height: 22px;
+  border-radius: 8px;
+  background: var(--primary-soft);
+  color: var(--primary-dark);
+  font-size: 11.5px;
+  font-weight: 900;
+  display: grid;
+  place-items: center;
+}
+
+/* ---------- 팁 ---------- */
+.rp-tip {
+  padding: 13px 15px;
+  border-radius: 16px;
+  background: #fffaf2;
+  border: 1px solid #ffe9cf;
+}
+
+.rp-tip h2 {
+  font-size: 13.5px;
+  margin-bottom: 6px;
+  color: #b5652f;
+}
+
+.rp-tip p {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.75;
+  color: #8a5f36;
+  font-weight: 600;
+}
+
+/* ---------- 관련 레시피 ---------- */
+.rp-rel {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rp-rel a {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 100%;
+  padding: 11px 12px;
+  border-radius: 14px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 800;
+  line-height: 1.4;
+  letter-spacing: -0.02em;
+  word-break: keep-all;
+}
+
+.rp-rel a:active {
+  border-color: var(--primary);
+}
+
+.rp-rel .e {
+  font-size: 19px;
+  flex: 0 0 auto;
+}
+
+.rp-rel .m {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 700;
+  color: var(--ink-3);
+  margin-top: 1px;
+}
+
+/* ---------- 소개 ---------- */
+.rp-about {
+  margin-top: 30px;
+  padding: 14px 15px;
+  border-radius: 16px;
+  background: var(--bg-deep);
+  font-size: 12px;
+  line-height: 1.75;
+  color: var(--ink-2);
+  font-weight: 500;
+  word-break: keep-all;
+}
+
+.rp-about h2 {
+  font-size: 13px;
+  margin-bottom: 6px;
+}
+
+.rp-about p {
+  margin: 0 0 6px;
+}
+
+.rp-about p:last-child {
+  margin-bottom: 0;
+}
+
+/* ---------- 바닥 ---------- */
+.rp-foot {
+  border-top: 1px solid var(--line);
+  padding: 18px 16px 30px;
+  text-align: center;
+  font-size: 11.5px;
+  color: var(--ink-3);
+  line-height: 1.9;
+}
+
+.rp-foot p {
+  margin: 0;
+}
+
+.rp-foot a {
+  color: var(--ink-2);
+  font-weight: 700;
+}
+
+/* ---------- 목록 페이지(recipes/index.html) ---------- */
+.hub-intro {
+  margin: 0 0 18px;
+  font-size: 13.5px;
+  line-height: 1.8;
+  color: var(--ink-2);
+  font-weight: 600;
+  word-break: keep-all;
+}
+
+.hub-jump {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin: 0 0 22px;
+}
+
+.hub-jump a {
+  padding: 7px 11px;
+  border-radius: 999px;
+  background: #fff5ea;
+  border: 1px solid #ffe4cd;
+  font-size: 12px;
+  font-weight: 800;
+  color: #a9542a;
+}
+
+.hub-cat h2 {
+  margin-top: 26px;
+  padding-bottom: 7px;
+  border-bottom: 1px solid var(--line);
+}
+
+.hub-list {
+  margin: 10px 0 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 10px;
+}
+
+.hub-list a {
+  display: block;
+  padding: 7px 8px;
+  border-radius: 10px;
+  color: var(--ink);
+  font-size: 12.5px;
+  font-weight: 700;
+  line-height: 1.45;
+  word-break: keep-all;
+}
+
+.hub-list a:active,
+.hub-list a:hover {
+  background: #fff5ea;
+}
+
+.hub-list small {
+  display: block;
+  font-size: 10.5px;
+  color: var(--ink-3);
+  font-weight: 600;
+}
+
+@media (min-width: 560px) {
+  h1 {
+    font-size: 30px;
+  }
+  .hub-list {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+}

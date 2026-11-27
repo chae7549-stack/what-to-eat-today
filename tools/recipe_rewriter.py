@@ -356,7 +356,18 @@ def clean_title(name):
         return ""
     good = [c for c in candidates
             if not re.search(r"(어요|습니다|입니다|이에요|예요|하세요|주세요|좋아|맛있|쉽|까요|네요|죠)$", c)]
-    return (good or candidates)[0]
+    return tidy_title((good or candidates)[0])
+
+
+TITLE_JUNK = re.compile(r"[\[\]{}<>*^~`|\\#]+")
+
+
+def tidy_title(title):
+    """제목 양 끝에 남은 대괄호·별표 같은 기호를 걷어 낸다 ('[부침개' → '부침개')."""
+    text = TITLE_JUNK.sub(" ", title or "")
+    text = re.sub(r"\s+", " ", text).strip(" .,·:;-")
+    text = re.sub(r"^[0-9]+[.)]?\s*", "", text)
+    return text.strip()
 
 
 # ---------------------------------------------------------------------------
