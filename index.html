@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>🍳 냉장고 파먹기 · 오늘 뭐 먹지</title>
+    <meta
+      name="description"
+      content="냉장고에 있는 재료만 골라도 만들 수 있는 요리를 찾아주고, 오늘 뭐 먹을지 룰렛으로 정해주는 앱. 계란·김치·두부 하나로 40가지 요리 추천."
+    />
+    <meta name="color-scheme" content="light" />
+    <meta name="theme-color" content="#ff6b3d" />
+
+    <!-- iOS 홈 화면 추가(PWA)용 메타 -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="냉장고파먹기" />
+    <meta name="format-detection" content="telephone=no" />
+
+    <!-- 아이콘 -->
+    <link rel="icon" type="image/svg+xml" href="./icons/icon.svg" />
+    <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
+    <link rel="manifest" href="./manifest.webmanifest" />
+
+    <!-- 공유 미리보기 -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="🍳 냉장고 파먹기 · 오늘 뭐 먹지" />
+    <meta
+      property="og:description"
+      content="있는 재료로 만들 수 있는 요리를 찾아주고, 오늘 뭐 먹을지 룰렛으로 정해드려요."
+    />
+    <meta property="og:image" content="./icons/icon-512.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+
+  <body>
+    <div class="app">
+      <!-- ================= 헤더 ================= -->
+      <header class="hero">
+        <div class="hero-top">
+          <div class="hero-badge" aria-hidden="true">🍳</div>
+          <h1>냉장고 파먹기</h1>
+        </div>
+        <p class="hero-sub">
+          있는 재료로 <b>오늘 뭐 먹을지</b> 바로 정해드려요
+        </p>
+      </header>
+
+      <main>
+        <!-- ================= 모드 1 · 냉장고 매칭 ================= -->
+        <section id="view-fridge" class="view" aria-label="냉장고 재료 매칭">
+          <div class="card">
+            <div class="card-head">
+              <h2 class="card-title">
+                냉장고에 뭐가 있나요?
+                <span class="tiny">눌러서 선택</span>
+              </h2>
+            </div>
+
+            <div id="chipList" class="chips" role="group" aria-label="재료 선택"></div>
+
+            <button type="button" id="moreChipsBtn" class="ghost-btn">재료 더 보기 ▼</button>
+
+            <form id="customForm" class="custom-row" autocomplete="off">
+              <input
+                id="customInput"
+                type="text"
+                maxlength="12"
+                placeholder="없는 재료는 직접 입력 (예: 베이컨)"
+                aria-label="재료 직접 입력"
+              />
+              <button type="submit">추가</button>
+            </form>
+
+            <p id="selSummary" class="summary">
+              <span>재료를 고르면 <strong>바로 만들 수 있는 요리</strong>를 찾아드려요</span>
+            </p>
+          </div>
+
+          <div id="resultHead" class="result-head">
+            <h2>오늘의 인기 레시피</h2>
+          </div>
+
+          <div id="dishList" class="dish-list" aria-live="polite"></div>
+
+          <!-- ==========================================================
+               [광고 슬롯 자리 — 수익화 준비]
+               도메인·광고 계정이 준비되면 아래 주석을 풀고
+               data 속성만 바꾸면 됩니다.
+
+               · Google AdSense
+                 스크립트를 </body> 앞에 한 번 넣고,
+                 <div class="ad-slot">
+                   <ins class="adsbygoogle" style="display:block"
+                        data-ad-client="ca-pub-XXXXXXXXXXXXXXX"
+                        data-ad-slot="0000000000"
+                        data-ad-format="auto" data-full-width-responsive="true"></ins>
+                   <script>(adsbygoogle = window.adsbygoogle || []).push({});</script>
+                 </div>
+
+               · 카카오 AdFit
+                 <div class="ad-slot">
+                   <ins class="kakao_ad_area" style="display:none;"
+                        data-ad-unit="DAN-XXXXXXXXXX" data-ad-width="320" data-ad-height="100"></ins>
+                   <script async src="//t1.daumcdn.net/kas/static/ba.min.js"></script>
+                 </div>
+
+               광고 영역에는 항상 'AD' 라벨을 붙여 본문과 구분해 주세요. (광고 정책)
+          =========================================================== -->
+          <div class="ad-slot hidden" id="adSlot" aria-hidden="true">
+            <span class="ad-label">AD</span>
+          </div>
+        </section>
+
+        <!-- ================= 모드 2 · 오늘 뭐 먹지 룰렛 ================= -->
+        <section id="view-roulette" class="view hidden" aria-label="오늘 뭐 먹지 룰렛">
+          <div class="filters">
+            <div class="filter-row">
+              <span class="filter-label">상황 · 기분</span>
+              <div class="seg" id="moodSeg" role="group" aria-label="상황·기분"></div>
+            </div>
+            <div class="filter-row">
+              <span class="filter-label">예산</span>
+              <div class="seg" id="budgetSeg" role="group" aria-label="예산"></div>
+            </div>
+            <div class="filter-row">
+              <span class="filter-label">방식</span>
+              <div class="seg" id="methodSeg" role="group" aria-label="방식"></div>
+            </div>
+          </div>
+
+          <div class="roulette">
+            <span class="pool-hint" id="poolLabel">메뉴 고르는 중…</span>
+
+            <div class="reel" id="reel">
+              <div class="reel-emoji" id="reelEmoji">🍳</div>
+              <div class="reel-name" id="reelName">오늘 뭐 먹지?</div>
+              <div class="reel-sub" id="reelSub">필터를 고르고 돌려보세요</div>
+            </div>
+
+            <button type="button" class="spin-btn" id="spinBtn">
+              <span>룰렛 돌리기</span>
+            </button>
+          </div>
+
+          <div id="rouletteResult" class="result hidden" aria-live="polite"></div>
+        </section>
+      </main>
+
+      <!-- ================= 하단 탭 ================= -->
+      <nav class="tabbar" role="tablist" aria-label="모드 선택">
+        <button
+          type="button"
+          class="tab"
+          role="tab"
+          data-view="fridge"
+          aria-selected="true"
+        >
+          <span aria-hidden="true">🧊</span>냉장고 파먹기
+        </button>
+        <button
+          type="button"
+          class="tab"
+          role="tab"
+          data-view="roulette"
+          aria-selected="false"
+        >
+          <span aria-hidden="true">🎲</span>오늘 뭐 먹지
+        </button>
+      </nav>
+    </div>
+
+    <!-- ================= 레시피 드로어 ================= -->
+    <div id="drawer" class="drawer" role="dialog" aria-modal="true" aria-labelledby="drawerTitle" hidden>
+      <div class="drawer-backdrop"></div>
+      <div class="drawer-panel" id="drawerPanel"></div>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <noscript>
+      <p style="padding: 20px; text-align: center">
+        이 앱은 자바스크립트가 필요해요. 브라우저 설정에서 자바스크립트를 켜 주세요.
+      </p>
+    </noscript>
+
+    <script src="./app.js" defer></script>
+  </body>
+</html>
