@@ -796,7 +796,7 @@ def rewrite_sentence(raw):
     if not s:
         return None
     s = _strip_head(s).strip(" ,.")
-    s = re.sub(r"^(은|는|이|가|을|를|과|와|도|만|에는|에서)\s+", "", s)
+    s = re.sub(r"^(은|는|을|를|과|와|도|만|에는|에서)\s+", "", s)
     if len(s) < 4:
         return None
     # 감상·홍보 문장 걸러 내기
