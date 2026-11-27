@@ -1,13 +1,13 @@
 /* 냉장고 파먹기 — 오프라인 지원 서비스 워커
    앱 껍데기(shell)를 캐시해 두고, 페이지 이동은 네트워크 우선으로 처리합니다. */
 
-var CACHE = "wtt-v3";
+var CACHE = "wtt-v4";
 var ASSETS = [
   "./",
   "./index.html",
-  "./styles.css",
-  "./data/recipes-data.js",
-  "./app.js",
+  "./styles.css?v=4",
+  "./data/recipes-data.js?v=4",
+  "./app.js?v=4",
   "./manifest.webmanifest",
   "./icons/icon.svg",
   "./icons/icon-192.png",

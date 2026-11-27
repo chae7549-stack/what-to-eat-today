@@ -311,12 +311,13 @@ def main():
     missing = sorted(ids_in_js - ids_in_html)
     check(not missing, f"app.js가 참조하는 id가 HTML에 모두 존재 (누락 {missing})")
 
-    check("./data/recipes-data.js" in html_src, "index.html이 레시피 데이터 파일을 불러옴")
-    check("./data/recipes-data.js" in sw_src, "서비스 워커 캐시 목록에 레시피 데이터 포함")
+    check("data/recipes-data.js" in html_src, "index.html이 레시피 데이터 파일을 불러옴")
+    check("data/recipes-data.js" in sw_src, "서비스 워커 캐시 목록에 레시피 데이터 포함")
     check(re.search(r'var CACHE = "wtt-v\d+"', sw_src) is not None, "서비스 워커 캐시 버전 표기")
 
     assets = set(re.findall(r'(?:href|src)="(\./[^"]+)"', html_src))
-    missing_files = [a for a in sorted(assets) if a != "./" and not (ROOT / a.lstrip("./")).exists()]
+    missing_files = [a for a in sorted(assets)
+                     if a != "./" and not (ROOT / a.lstrip("./").split("?")[0]).exists()]
     check(not missing_files, f"참조 파일 존재 (누락 {missing_files})")
 
     opens = len(re.findall(r"<(div|section|nav|header|main|form|button|p|h1|h2|h3|span|ul|ol|li|footer)\b", html_src))
