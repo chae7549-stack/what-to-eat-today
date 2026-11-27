@@ -1,3 +1,9 @@
 shots/
 __pycache__/
 .DS_Store
+
+# 수집 원본·중간 파일 (필요하면 tools/ 스크립트로 다시 만듭니다)
+scratch/*.json
+scratch/*.jsonl
+scratch/*.html
+scratch/*.js

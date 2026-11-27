@@ -45,28 +45,67 @@ def main():
         page.on("response", lambda r: failed.append((r.status, r.url)) if r.status >= 400 else None)
 
         page.goto(f"http://127.0.0.1:{PORT}/index.html", wait_until="networkidle")
+        page.wait_for_timeout(600)
+        page.screenshot(path=str(SHOTS / "01-start.png"))
+        print("HERO STAT:", page.locator("#heroStat").inner_text())
+        print("CHIPS:", page.locator(".chip").count())
+        print("HEAD:", page.locator("#resultHead").inner_text().replace("\n", " | "))
+        print("LISTED:", page.locator(".dish").count())
+
+        # 카테고리 필터
+        page.locator(".pill", has_text="국·찌개").first.click()
+        page.wait_for_timeout(400)
+        print("CAT HEAD:", page.locator("#resultHead").inner_text().replace("\n", " | "))
+        print("CAT LISTED:", page.locator(".dish").count())
+        page.screenshot(path=str(SHOTS / "02-category.png"))
+        page.locator(".pill", has_text="전체").first.click()
+        page.wait_for_timeout(300)
+
+        # 검색
+        page.fill("#dishSearch", "김치")
         page.wait_for_timeout(500)
-        page.screenshot(path=str(SHOTS / "01-start.png"), full_page=False)
-        page.screenshot(path=str(SHOTS / "01b-start-full.png"), full_page=True)
+        print("SEARCH HEAD:", page.locator("#resultHead").inner_text().replace("\n", " | "))
+        page.screenshot(path=str(SHOTS / "03-search.png"))
+        page.click("#searchClear")
+        page.wait_for_timeout(400)
+
+        # 더 보기
+        before = page.locator(".dish").count()
+        page.locator(".more-btn").first.click()
+        page.wait_for_timeout(400)
+        print("MORE:", before, "→", page.locator(".dish").count())
+
+        # 재료 전체 보기
+        page.click("#moreChipsBtn")
+        page.wait_for_timeout(300)
+        print("CHIPS EXPANDED:", page.locator(".chip").count(),
+              "GROUPS:", page.locator(".chip-group").count())
+        page.screenshot(path=str(SHOTS / "04-chips-all.png"))
+        page.click("#moreChipsBtn")
+        page.wait_for_timeout(200)
 
         # 재료 선택: 계란 · 김치 · 밥
         for label in ["계란", "김치", "밥"]:
             page.get_by_role("button", name=label, exact=True).first.click()
-            page.wait_for_timeout(120)
+            page.wait_for_timeout(150)
         page.wait_for_timeout(500)
-        page.screenshot(path=str(SHOTS / "02-matched.png"))
+        page.screenshot(path=str(SHOTS / "05-matched.png"))
+        print("MATCH HEAD:", page.locator("#resultHead").inner_text().replace("\n", " | "))
+        print("MATCHED:", page.locator(".dish").count())
 
         top = page.locator(".dish").first
         print("TOP DISH:", top.locator(".dish-name").inner_text().replace("\n", " "))
         print("TOP PERCENT:", top.locator(".match-num").inner_text())
-        print("DISH COUNT:", page.locator(".dish").count())
 
         # 레시피 드로어
         top.click()
-        page.wait_for_timeout(500)
-        page.screenshot(path=str(SHOTS / "03-drawer.png"))
+        page.wait_for_timeout(600)
+        page.screenshot(path=str(SHOTS / "06-drawer.png"))
         print("DRAWER TITLE:", page.locator("#drawerTitle").inner_text())
-        print("STEP COUNT:", page.locator(".steps li").count())
+        print("INGREDIENTS:", page.locator(".ing-list li").count())
+        print("STEPS:", page.locator(".steps li").count())
+        box = page.locator("#drawerPanel").bounding_box()
+        print("DRAWER BOX:", box)
         page.locator('.drawer-foot [data-act="close"]').click()
         page.wait_for_timeout(300)
 
@@ -78,46 +117,45 @@ def main():
 
         # 룰렛 탭
         page.get_by_role("tab", name="오늘 뭐 먹지").click()
-        page.wait_for_timeout(400)
-        page.screenshot(path=str(SHOTS / "04-roulette.png"))
+        page.wait_for_timeout(500)
+        page.screenshot(path=str(SHOTS / "07-roulette.png"))
         print("POOL LABEL:", page.locator("#poolLabel").inner_text())
 
-        # 필터: 야식 + 배달·외식
+        # 필터: 야식 + 집에서 + 국·찌개
         page.locator("#moodSeg button", has_text="야식").click()
-        page.locator("#methodSeg button", has_text="배달·외식").click()
-        page.wait_for_timeout(200)
+        page.locator("#methodSeg button", has_text="집에서").click()
+        page.locator("#catSeg button", has_text="국·찌개").click()
+        page.wait_for_timeout(300)
         print("POOL AFTER FILTER:", page.locator("#poolLabel").inner_text())
 
         page.locator("#spinBtn").click()
-        page.wait_for_timeout(400)
-        page.screenshot(path=str(SHOTS / "05-spinning.png"))
-        page.wait_for_selector("#rouletteResult:not(.hidden)", timeout=15000)
+        page.wait_for_timeout(500)
+        page.screenshot(path=str(SHOTS / "08-spinning.png"))
+        page.wait_for_selector("#rouletteResult:not(.hidden)", timeout=20000)
         page.wait_for_timeout(900)
-        page.screenshot(path=str(SHOTS / "06-result.png"), full_page=True)
+        page.screenshot(path=str(SHOTS / "09-result.png"), full_page=True)
         print("RESULT:", page.locator(".result-name").inner_text())
         print("RESULT TAGS:", page.locator(".result-tags").inner_text().replace("\n", " | "))
 
-        # 결과 카드가 화면 폭을 넘지 않는지 확인
-        box = page.locator(".result").bounding_box()
-        print("RESULT BOX:", box)
         print("SCROLL WIDTH:", page.evaluate("document.documentElement.scrollWidth"),
               "VIEWPORT:", page.evaluate("window.innerWidth"))
 
         # 데스크톱 폭 확인
         page.set_viewport_size({"width": 1280, "height": 900})
         page.wait_for_timeout(400)
-        page.screenshot(path=str(SHOTS / "07-desktop.png"), full_page=False)
+        page.screenshot(path=str(SHOTS / "10-desktop.png"))
 
         # 오프라인(서비스 워커) 확인
         page.goto(f"http://127.0.0.1:{PORT}/index.html", wait_until="networkidle")
-        page.wait_for_timeout(1200)
-        sw = page.evaluate("navigator.serviceWorker.getRegistrations().then(r => r.length)")
-        print("SW REGISTRATIONS:", sw)
+        page.wait_for_timeout(1500)
+        print("SW REGISTRATIONS:",
+              page.evaluate("navigator.serviceWorker.getRegistrations().then(r => r.length)"))
         ctx.set_offline(True)
         page.reload(wait_until="domcontentloaded")
-        page.wait_for_timeout(800)
+        page.wait_for_timeout(900)
         print("OFFLINE TITLE:", page.title())
-        print("OFFLINE CHIP COUNT:", page.locator(".chip").count())
+        print("OFFLINE CHIPS:", page.locator(".chip").count())
+        print("OFFLINE DISHES:", page.locator(".dish").count())
         ctx.set_offline(False)
 
         browser.close()

@@ -1,83 +1,127 @@
 /* ==========================================================================
    냉장고 파먹기 — 오늘 뭐 먹지
-   - 모드 1: 냉장고 재료 매칭 (계란·김치·두부 … 보유 재료로 만들 수 있는 요리 추천)
-   - 모드 2: 기분·예산·방식 룰렛 (오늘 뭐 먹지?)
+   - 모드 1: 냉장고 재료 매칭 (보유 재료로 만들 수 있는 요리 추천)
+   - 모드 2: 기분·예산·방식·카테고리 룰렛 (오늘 뭐 먹지?)
+   - 레시피: 직접 만든 큐레이션 57개 + 만개의레시피(10000recipe.com)에서
+             수집한 집밥 레시피 1,100여 개 (data/recipes-data.js)
    - 공유: Web Share API → 클립보드 순으로 폴백
    ========================================================================== */
 
 (function () {
   "use strict";
 
+  var DB = (typeof window !== "undefined" && window.RECIPE_DB) || null;
+
   /* ------------------------------------------------------------------
-     1. 재료 데이터 (냉장고 칩)
+     1. 재료 분류
+        data/recipes-data.js 의 taxonomy(112종)를 그대로 쓴다.
+        데이터 파일이 없을 때를 대비해 최소 목록을 둔다.
      ------------------------------------------------------------------ */
-  var INGREDIENTS = [
-    { id: "egg", label: "계란", emoji: "🥚", common: true },
-    { id: "kimchi", label: "김치", emoji: "🌶️", common: true },
-    { id: "tofu", label: "두부", emoji: "🧊", common: true },
-    { id: "pa", label: "대파", emoji: "🌿", common: true },
-    { id: "onion", label: "양파", emoji: "🧅", common: true },
-    { id: "garlic", label: "마늘", emoji: "🧄", common: true },
-    { id: "ham", label: "스팸·햄", emoji: "🥓", common: true },
-    { id: "tuna", label: "참치캔", emoji: "🐟", common: true },
-    { id: "rice", label: "밥", emoji: "🍚", common: true },
-    { id: "ramen", label: "라면·면", emoji: "🍜", common: true },
-    { id: "pasta", label: "파스타면", emoji: "🍝", common: true },
-    { id: "cheese", label: "치즈", emoji: "🧀", common: true },
-    { id: "potato", label: "감자", emoji: "🥔", common: true },
-    { id: "pork", label: "돼지고기·베이컨", emoji: "🥩", common: true },
-    { id: "chicken", label: "닭가슴살", emoji: "🍗", common: true },
-    { id: "bean", label: "콩나물", emoji: "🌱", common: true },
-    { id: "fishcake", label: "어묵", emoji: "🍢", common: true },
-    { id: "mushroom", label: "버섯", emoji: "🍄", common: true },
-    { id: "sauce", label: "장류·양념", emoji: "🥫", common: true },
-    { id: "milk", label: "우유", emoji: "🥛", common: false },
-    { id: "butter", label: "버터", emoji: "🧈", common: false },
-    { id: "bread", label: "식빵", emoji: "🍞", common: false },
-    { id: "cabbage", label: "양배추", emoji: "🥬", common: false },
-    { id: "cucumber", label: "오이", emoji: "🥒", common: false },
-    { id: "carrot", label: "당근", emoji: "🥕", common: false },
-    { id: "tteok", label: "떡", emoji: "🍡", common: false },
-    { id: "tomato", label: "토마토", emoji: "🍅", common: false },
-    { id: "flour", label: "부침가루", emoji: "🌾", common: false },
-    { id: "curry", label: "카레가루", emoji: "🍛", common: false },
+  var FALLBACK_TAXONOMY = [
+    { id: "egg", label: "계란", emoji: "🥚", group: "계란·두부·콩", common: true, aliases: ["계란", "달걀"] },
+    { id: "kimchi", label: "김치", emoji: "🌶️", group: "채소·버섯", common: true, aliases: ["김치", "포기김치", "신김치"] },
+    { id: "tofu", label: "두부", emoji: "🧊", group: "계란·두부·콩", common: true, aliases: ["두부"] },
+    { id: "pa", label: "대파", emoji: "🌿", group: "채소·버섯", common: true, aliases: ["대파", "파", "쪽파"] },
+    { id: "onion", label: "양파", emoji: "🧅", group: "채소·버섯", common: true, aliases: ["양파"] },
+    { id: "garlic", label: "마늘", emoji: "🧄", group: "채소·버섯", common: true, aliases: ["마늘", "다진마늘"] },
+    { id: "ham", label: "햄·소시지", emoji: "🥓", group: "고기·해산물", common: true, aliases: ["스팸", "햄", "소시지", "베이컨"] },
+    { id: "tuna", label: "참치캔", emoji: "🐟", group: "고기·해산물", common: true, aliases: ["참치", "참치캔"] },
+    { id: "rice", label: "밥", emoji: "🍚", group: "곡류·면·떡", common: true, aliases: ["밥", "쌀밥", "찬밥"] },
+    { id: "ramen", label: "라면·면", emoji: "🍜", group: "곡류·면·떡", common: true, aliases: ["라면", "라면사리"] },
+    { id: "pasta", label: "파스타면", emoji: "🍝", group: "곡류·면·떡", common: true, aliases: ["파스타", "스파게티"] },
+    { id: "cheese", label: "치즈", emoji: "🧀", group: "빵·유제품", common: true, aliases: ["치즈", "모짜렐라"] },
+    { id: "potato", label: "감자", emoji: "🥔", group: "채소·버섯", common: true, aliases: ["감자"] },
+    { id: "pork", label: "돼지고기", emoji: "🥩", group: "고기·해산물", common: true, aliases: ["돼지고기", "삼겹살"] },
+    { id: "chicken", label: "닭고기", emoji: "🍗", group: "고기·해산물", common: true, aliases: ["닭고기", "닭가슴살"] },
+    { id: "bean", label: "콩나물", emoji: "🌱", group: "채소·버섯", common: true, aliases: ["콩나물"] },
+    { id: "fishcake", label: "어묵", emoji: "🍢", group: "고기·해산물", common: true, aliases: ["어묵", "오뎅"] },
+    { id: "mushroom", label: "버섯", emoji: "🍄", group: "채소·버섯", common: true, aliases: ["버섯", "표고버섯", "느타리"] },
+    { id: "sauce", label: "장류·양념", emoji: "🥫", group: "양념·소스", common: true, pantry: true, aliases: ["간장", "고추장", "된장", "고춧가루"] },
+    { id: "milk", label: "우유", emoji: "🥛", group: "빵·유제품", aliases: ["우유"] },
+    { id: "butter", label: "버터", emoji: "🧈", group: "빵·유제품", aliases: ["버터"] },
+    { id: "bread", label: "식빵", emoji: "🍞", group: "빵·유제품", aliases: ["식빵", "빵"] },
+    { id: "cabbage", label: "양배추", emoji: "🥬", group: "채소·버섯", aliases: ["양배추"] },
+    { id: "cucumber", label: "오이", emoji: "🥒", group: "채소·버섯", aliases: ["오이"] },
+    { id: "carrot", label: "당근", emoji: "🥕", group: "채소·버섯", aliases: ["당근"] },
+    { id: "tteok", label: "떡", emoji: "🍡", group: "곡류·면·떡", aliases: ["떡", "떡볶이떡"] },
+    { id: "tomato", label: "토마토", emoji: "🍅", group: "채소·버섯", aliases: ["토마토"] },
+    { id: "flour", label: "부침가루·밀가루", emoji: "🌾", group: "곡류·면·떡", aliases: ["부침가루", "밀가루", "튀김가루"] },
+    { id: "curry", label: "카레가루", emoji: "🍛", group: "곡류·면·떡", aliases: ["카레", "카레가루"] },
   ];
 
-  // 직접 입력한 재료를 기존 재료로 연결하는 별칭
-  var ALIASES = {
-    계란: "egg", 달걀: "egg", 에그: "egg", 계란후라이: "egg",
-    김치: "kimchi", 김치속: "kimchi", 포기김치: "kimchi",
-    두부: "tofu", 순두부: "tofu", 찌개두부: "tofu", 부침두부: "tofu",
-    대파: "pa", 파: "pa", 쪽파: "pa", 실파: "pa", 다진파: "pa",
-    양파: "onion", 적양파: "onion",
-    마늘: "garlic", 다진마늘: "garlic", 통마늘: "garlic", 마늘쫑: "garlic",
-    스팸: "ham", 햄: "ham", 소시지: "ham", 비엔나: "ham", 베이컨: "ham",
-    참치: "tuna", 참치캔: "tuna", 동원참치: "tuna", 동원: "tuna",
-    밥: "rice", 쌀밥: "rice", 찬밥: "rice", 공기밥: "rice", 즉석밥: "rice",
-    라면: "ramen", 라멘: "ramen", 면: "ramen", 소면: "ramen", 국수: "ramen",
-    파스타: "pasta", 파스타면: "pasta", 스파게티: "pasta", 스파게티면: "pasta", 링귀니: "pasta",
-    치즈: "cheese", 슬라이스치즈: "cheese", 모짜렐라: "cheese", 스트링: "cheese",
-    감자: "potato", 알감자: "potato",
-    돼지고기: "pork", 삼겹살: "pork", 목살: "pork", 앞다리살: "pork", 다진고기: "pork",
-    닭가슴살: "chicken", 닭고기: "chicken", 닭다리: "chicken",
-    콩나물: "bean", 숙주: "bean",
-    어묵: "fishcake", 오뎅: "fishcake", 사각어묵: "fishcake",
-    버섯: "mushroom", 표고: "mushroom", 느타리: "mushroom", 양송이: "mushroom", 새송이: "mushroom",
-    고추장: "sauce", 간장: "sauce", 된장: "sauce", 쌈장: "sauce", 양념: "sauce", 굴소스: "sauce",
-    우유: "milk", 버터: "butter", 식빵: "bread", 빵: "bread", 토스트: "bread",
-    양배추: "cabbage", 오이: "cucumber", 당근: "carrot",
-    떡: "tteok", 떡볶이떡: "tteok", 가래떡: "tteok",
-    토마토: "tomato", 방울토마토: "tomato",
-    부침가루: "flour", 밀가루: "flour", 튀김가루: "flour",
-    카레: "curry", 카레가루: "curry",
-  };
+  var INGREDIENTS = [];   // 칩으로 쓰는 재료
+  var BY_ID = {};         // id → 재료
+  var ALIAS = [];         // [{key, id}] 긴 이름부터 정렬
+
+  function normalize(text) {
+    return String(text || "").replace(/\s+/g, "").replace(/[()[\]{}]/g, "").trim().toLowerCase();
+  }
+
+  (function buildTaxonomy() {
+    var src = (DB && DB.taxonomy && DB.taxonomy.length) ? DB.taxonomy : FALLBACK_TAXONOMY;
+    src.forEach(function (t) {
+      var item = {
+        id: t.id, label: t.label, emoji: t.emoji || "🍴",
+        group: t.group || "기타",
+        common: !!t.common, pantry: !!t.pantry, always: !!t.always,
+        aliases: t.aliases || [],
+      };
+      INGREDIENTS.push(item);
+      BY_ID[item.id] = item;
+      var keys = [item.label].concat(item.aliases);
+      keys.forEach(function (k) {
+        var key = normalize(k);
+        if (key) ALIAS.push({ key: key, id: item.id });
+      });
+    });
+    ALIAS.sort(function (a, b) { return b.key.length - a.key.length; });
+  })();
+
+  var GROUPS = [];
+  INGREDIENTS.forEach(function (it) {
+    if (GROUPS.indexOf(it.group) === -1) GROUPS.push(it.group);
+  });
 
   /* ------------------------------------------------------------------
-     2. 요리 데이터베이스
-        method: home(집에서) / out(배달·외식)
-        moods : alone(혼밥) hearty(든든한 한끼) night(야식) hangover(해장) light(가벼운 식단)
-        budget: low(1만원 이하) mid(1~2만원) high(2만원 이상)
+     2. 요리 데이터
+        - DISHES: 직접 만든 큐레이션 요리
+        - RECIPES: 큐레이션(집밥) + 수집 레시피
+        - ALLDISH: 룰렛용 (배달·외식 포함)
      ------------------------------------------------------------------ */
+  var CURATED_CAT = {
+    "kimchi-fried-rice": "밥·죽", "gyeranmari": "반찬", "tuna-mayo": "밥·죽",
+    "dubu-kimchi": "반찬", "ganjang-gyeran-bap": "밥·죽", "spam-mayo": "밥·죽",
+    "kimchi-jjigae": "국·찌개", "doenjang-jjigae": "국·찌개", "budae-jjigae": "국·찌개",
+    "aglio": "면·파스타", "tomato-pasta": "면·파스타", "cream-pasta": "면·파스타",
+    "tteokbokki": "분식·야식", "rabokki": "분식·야식", "jeyuk": "볶음·구이",
+    "gamjajeon": "전·부침", "eomuktang": "국·찌개", "kongnamul-gukbap": "국·찌개",
+    "curry": "밥·죽", "omurice": "밥·죽", "street-toast": "양식·기타",
+    "kimchijeon": "전·부침", "gyeranjjim": "반찬", "kimchi-ramyeon": "분식·야식",
+    "cheese-ramyeon": "분식·야식", "tuna-kimchi-stew": "국·찌개", "dubu-jorim": "반찬",
+    "kongnamul-muchim": "반찬", "gamja-jorim": "반찬", "beoseot-bokkeum": "볶음·구이",
+    "chicken-salad": "양식·기타", "chicken-fried-rice": "밥·죽", "oi-muchim": "반찬",
+    "pork-cabbage": "볶음·구이", "french-toast": "양식·기타", "ham-cheese-sandwich": "양식·기타",
+    "bibimbap": "밥·죽", "eomuk-bokkeum": "볶음·구이", "potato-soup": "양식·기타",
+    "dubu-butter": "볶음·구이", "tuna-potato-jorim": "반찬", "tteokguk": "국·찌개",
+    "out-chicken": "분식·야식", "out-pizza": "양식·기타", "out-jjajang": "면·파스타",
+    "out-jjambbong": "면·파스타", "out-samgyeopsal": "볶음·구이", "out-maratang": "면·파스타",
+    "out-gimbap": "분식·야식", "out-pho": "면·파스타", "out-burger": "양식·기타",
+    "out-sushi": "양식·기타", "out-naengmyeon": "면·파스타", "out-donkatsu": "양식·기타",
+    "out-gukbap": "국·찌개", "out-jokbal": "볶음·구이", "out-salad": "양식·기타",
+  };
+
+  var CATEGORIES = [
+    { id: "all", label: "전체" },
+    { id: "밥·죽", label: "밥·죽" },
+    { id: "국·찌개", label: "국·찌개" },
+    { id: "면·파스타", label: "면·파스타" },
+    { id: "볶음·구이", label: "볶음·구이" },
+    { id: "반찬", label: "반찬" },
+    { id: "전·부침", label: "전·부침" },
+    { id: "분식·야식", label: "분식·야식" },
+    { id: "양식·기타", label: "양식·기타" },
+  ];
+
   var DISHES = [
     {
       id: "kimchi-fried-rice", name: "김치볶음밥", emoji: "🍳", time: 10, level: 1,
@@ -719,18 +763,74 @@
     },
   ];
 
+  var RECIPES = [];
+
+  (function buildRecipes() {
+    DISHES.forEach(function (d) {
+      var ing = [];
+      (d.req || []).forEach(function (id) { ing.push([ingLabel(id), "", id]); });
+      (d.opt || []).forEach(function (id) { ing.push([ingLabel(id), "", id]); });
+      RECIPES.push({
+        id: d.id, name: d.name, emoji: d.emoji || "🍽️",
+        cat: CURATED_CAT[d.id] || "양식·기타",
+        time: d.time || 15, level: d.level || 1, servings: "",
+        moods: d.moods || ["hearty"], budget: d.budget || "low",
+        method: d.method || "home",
+        req: d.req || [], opt: d.opt || [],
+        steps: d.steps || [], ing: ing,
+        tip: d.tip || "", comment: d.comment || "", price: d.price || "",
+        src: "", author: "", reviews: 0, rating: 0, curated: true,
+      });
+    });
+
+    var collected = (DB && DB.recipes) || [];
+    collected.forEach(function (r) {
+      var ing = (r.ing || []).map(function (row) {
+        return [row[0] || "", row[1] || "", row[2] || ""];
+      });
+      RECIPES.push({
+        id: r.id, name: r.name, emoji: r.emoji || "🍽️",
+        cat: r.cat || "양식·기타",
+        time: r.time || 30, level: r.level || 1, servings: r.servings || "",
+        moods: r.moods || ["hearty"], budget: r.budget || "low",
+        method: "home",
+        req: r.req || [], opt: r.opt || [],
+        steps: r.steps || [], ing: ing,
+        tip: "", comment: "", price: "",
+        src: r.src || "", author: r.author || "",
+        reviews: r.reviews || 0, rating: r.rating || 0, curated: false,
+      });
+    });
+  })();
+
+  // 검색용 문자열을 미리 만들어 둔다 (1,000개 이상도 즉시 검색)
+  var HOME_RECIPES = [];
+  (function buildIndex() {
+    RECIPES.forEach(function (d) {
+      var parts = [d.name, d.cat];
+      d.ing.forEach(function (row) { parts.push(row[0]); });
+      d._s = normalize(parts.join(" "));
+      if (d.method === "home") HOME_RECIPES.push(d);
+    });
+  })();
+
+  var ALLDISH = RECIPES; // 배달·외식까지 포함한 전체 (룰렛용)
+
   /* ------------------------------------------------------------------
      3. 상태
      ------------------------------------------------------------------ */
-  var STORE_KEY = "wtt:v1";
+  var STORE_KEY = "wtt:v2";
   var state = {
     selected: [],        // 재료 id 배열 (직접 입력은 "c:라벨")
     expandedChips: false,
-    showAllDishes: false,
     tab: "fridge",
     mood: "any",
     budget: "any",
     method: "all",
+    cat: "all",
+    query: "",
+    visible: 24,
+    rows: [],
     spinning: false,
     lastPick: null,
     drawerDish: null,
@@ -765,41 +865,44 @@
   }
 
   function ing(id) {
-    for (var i = 0; i < INGREDIENTS.length; i++) {
-      if (INGREDIENTS[i].id === id) return INGREDIENTS[i];
-    }
-    return { id: id, label: id.replace(/^c:/, ""), emoji: "🍴", custom: true };
+    return BY_ID[id] || { id: id, label: String(id).replace(/^c:/, ""), emoji: "🍴", custom: true };
   }
 
   function ingLabel(id) {
-    return ing(id).label;
+    return BY_ID[id] ? BY_ID[id].label : String(id).replace(/^c:/, "");
   }
 
   function sleep(ms) {
     return new Promise(function (resolve) { setTimeout(resolve, ms); });
   }
 
-  function normalize(text) {
-    return String(text || "")
-      .replace(/\s+/g, "")
-      .replace(/[()[\]{}]/g, "")
-      .trim()
-      .toLowerCase();
-  }
-
   function findByLabel(text) {
     var key = normalize(text);
     if (!key) return null;
-    for (var i = 0; i < INGREDIENTS.length; i++) {
-      var item = INGREDIENTS[i];
-      if (normalize(item.label) === key || item.id === key) return item;
+    if (BY_ID[key]) return BY_ID[key];
+    for (var i = 0; i < ALIAS.length; i++) {
+      if (ALIAS[i].key === key) return ing(ALIAS[i].id);
     }
-    if (ALIASES[key]) return ing(ALIASES[key]);
-    // 부분 일치 (예: "다진 마늘" → 마늘)
-    for (var k in ALIASES) {
-      if (key.indexOf(k) !== -1) return ing(ALIASES[k]);
+    for (var j = 0; j < ALIAS.length; j++) {
+      if (ALIAS[j].key.length >= 2 && key.indexOf(ALIAS[j].key) !== -1) return ing(ALIAS[j].id);
     }
     return null;
+  }
+
+  function formatTime(min) {
+    min = Number(min) || 0;
+    if (min >= 60) {
+      var h = Math.floor(min / 60);
+      var m = min % 60;
+      return m ? h + "시간 " + m + "분" : h + "시간";
+    }
+    return min + "분";
+  }
+
+  function levelText(level) {
+    if (level >= 3) return "어려움";
+    if (level === 2) return "보통";
+    return "쉬움";
   }
 
   function save() {
@@ -810,6 +913,7 @@
         mood: state.mood,
         budget: state.budget,
         method: state.method,
+        cat: state.cat,
       }));
     } catch (e) { /* 저장 실패는 무시 (사생활 모드 등) */ }
   }
@@ -826,39 +930,73 @@
       if (data && data.mood) state.mood = data.mood;
       if (data && data.budget) state.budget = data.budget;
       if (data && data.method) state.method = data.method;
+      if (data && data.cat) {
+        var okCat = CATEGORIES.some(function (c) { return c.id === data.cat; });
+        if (okCat) state.cat = data.cat;
+      }
     } catch (e) { /* 무시 */ }
   }
 
   /* ------------------------------------------------------------------
      5. 냉장고 매칭
      ------------------------------------------------------------------ */
-  function matchDishes() {
+  function matchRows(pool) {
     var have = {};
     state.selected.forEach(function (id) { have[id] = true; });
 
-    var rows = DISHES.filter(function (d) { return d.method === "home"; }).map(function (d) {
-      var hit = d.req.filter(function (id) { return !!have[id]; });
-      var missing = d.req.filter(function (id) { return !have[id]; });
-      var bonus = d.opt.filter(function (id) { return !!have[id]; });
-      var percent = d.req.length ? Math.round((hit.length / d.req.length) * 100) : 100;
-      return {
+    var rows = [];
+    for (var i = 0; i < pool.length; i++) {
+      var d = pool[i];
+      var hit = [], missing = [], bonus = [];
+      for (var j = 0; j < d.req.length; j++) {
+        if (have[d.req[j]]) hit.push(d.req[j]);
+        else missing.push(d.req[j]);
+      }
+      for (var k = 0; k < d.opt.length; k++) {
+        if (have[d.opt[k]]) bonus.push(d.opt[k]);
+      }
+      rows.push({
         dish: d,
         hit: hit,
         missing: missing,
         bonus: bonus,
-        percent: percent,
-        ready: missing.length === 0,
-      };
-    });
+        percent: d.req.length ? Math.round((hit.length / d.req.length) * 100) : 0,
+        ready: d.req.length > 0 && missing.length === 0,
+      });
+    }
+    return rows;
+  }
 
-    var matched = rows.filter(function (r) { return r.hit.length > 0 || r.ready; });
-    matched.sort(function (a, b) {
-      if (b.percent !== a.percent) return b.percent - a.percent;
-      if (a.missing.length !== b.missing.length) return a.missing.length - b.missing.length;
-      if (b.bonus.length !== a.bonus.length) return b.bonus.length - a.bonus.length;
-      return a.dish.time - b.dish.time;
+  function buildRows() {
+    var q = normalize(state.query);
+    var pool = HOME_RECIPES;
+
+    if (state.cat !== "all") {
+      pool = pool.filter(function (d) { return d.cat === state.cat; });
+    }
+    if (q) {
+      pool = pool.filter(function (d) { return d._s.indexOf(q) !== -1; });
+    }
+
+    if (state.selected.length) {
+      var rows = matchRows(pool).filter(function (r) { return r.hit.length > 0; });
+      rows.sort(function (a, b) {
+        if (a.ready !== b.ready) return a.ready ? -1 : 1;
+        if (b.percent !== a.percent) return b.percent - a.percent;
+        if (a.missing.length !== b.missing.length) return a.missing.length - b.missing.length;
+        if (b.bonus.length !== a.bonus.length) return b.bonus.length - a.bonus.length;
+        return (a.dish.time || 99) - (b.dish.time || 99);
+      });
+      return rows;
+    }
+
+    return pool.map(function (d) {
+      return { dish: d, hit: [], missing: [], bonus: [], percent: 0, ready: false };
+    }).sort(function (a, b) {
+      if (a.dish.curated !== b.dish.curated) return a.dish.curated ? -1 : 1;
+      if (b.dish.reviews !== a.dish.reviews) return b.dish.reviews - a.dish.reviews;
+      return a.dish.name < b.dish.name ? -1 : 1;
     });
-    return { all: matched, total: rows.length };
   }
 
   /* ------------------------------------------------------------------
@@ -867,25 +1005,38 @@
   function renderChips() {
     var wrap = el.chipList;
     wrap.innerHTML = "";
+    var frag = document.createDocumentFragment();
 
-    var list = INGREDIENTS.filter(function (item) {
-      return state.expandedChips || item.common;
-    });
-
-    list.forEach(function (item) {
-      wrap.appendChild(chipNode(item.id, item.label, item.emoji, false));
-    });
+    if (state.expandedChips) {
+      GROUPS.forEach(function (g) {
+        var head = document.createElement("span");
+        head.className = "chip-group";
+        head.textContent = g;
+        frag.appendChild(head);
+        INGREDIENTS.forEach(function (item) {
+          if (item.group !== g) return;
+          frag.appendChild(chipNode(item.id, item.label, item.emoji, false));
+        });
+      });
+    } else {
+      INGREDIENTS.forEach(function (item) {
+        if (!item.common) return;
+        frag.appendChild(chipNode(item.id, item.label, item.emoji, false));
+      });
+    }
 
     // 직접 추가한 재료
     state.selected.forEach(function (id) {
       if (id.indexOf("c:") !== 0) return;
-      wrap.appendChild(chipNode(id, id.slice(2), "🍴", true));
+      frag.appendChild(chipNode(id, id.slice(2), "🍴", true));
     });
 
-    var hidden = INGREDIENTS.length - list.length;
+    wrap.appendChild(frag);
+
+    var hidden = INGREDIENTS.filter(function (i) { return !i.common; }).length;
     el.moreChipsBtn.textContent = state.expandedChips
-      ? "접기 ▲"
-      : "재료 더 보기 (+" + hidden + ") ▼";
+      ? "재료 접기 ▲"
+      : "재료 전체 보기 (+" + hidden + ") ▼";
     el.moreChipsBtn.classList.toggle("hidden", hidden <= 0 && !state.expandedChips);
   }
 
@@ -957,51 +1108,101 @@
   }
 
   /* ------------------------------------------------------------------
-     7. 렌더 — 요리 목록
+     7. 렌더 — 카테고리 알약 · 검색
+     ------------------------------------------------------------------ */
+  function renderCatPills() {
+    var wrap = el.catPills;
+    if (!wrap) return;
+    wrap.innerHTML = "";
+    var frag = document.createDocumentFragment();
+    CATEGORIES.forEach(function (c) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "pill";
+      btn.textContent = c.label;
+      btn.dataset.cat = c.id;
+      btn.setAttribute("aria-pressed", state.cat === c.id ? "true" : "false");
+      btn.addEventListener("click", function () {
+        state.cat = c.id;
+        state.visible = 24;
+        renderCatPills();
+        renderResults();
+        save();
+      });
+      frag.appendChild(btn);
+    });
+    wrap.appendChild(frag);
+  }
+
+  /* ------------------------------------------------------------------
+     8. 렌더 — 요리 목록
      ------------------------------------------------------------------ */
   function renderResults() {
+    state.rows = buildRows();
+    state.visible = 24;
+    renderHead();
+    paintList();
+  }
+
+  function renderHead() {
+    var n = state.rows.length;
+    var title, sub = "";
+    if (state.selected.length) {
+      title = "지금 만들 수 있는 요리";
+      sub = n + "개 찾음";
+    } else if (state.query) {
+      title = "'" + state.query + "' 검색 결과";
+      sub = n + "개";
+    } else if (state.cat !== "all") {
+      title = state.cat;
+      sub = n + "개";
+    } else {
+      title = "전체 집밥 레시피";
+      sub = n.toLocaleString("ko-KR") + "개";
+    }
+    el.resultHead.innerHTML =
+      "<h2>" + escapeHtml(title) + "</h2><span>" + escapeHtml(sub) + "</span>";
+  }
+
+  function paintList() {
     var list = el.dishList;
     list.innerHTML = "";
 
-    var res = matchDishes();
-    var hasIngredients = state.selected.length > 0;
+    if (!state.rows.length) {
+      renderEmpty();
+      return;
+    }
 
-    el.resultHead.innerHTML =
-      "<h2>" +
-      (hasIngredients ? "지금 만들 수 있는 요리" : "오늘의 인기 레시피") +
-      "</h2><span>" +
-      (hasIngredients ? res.all.length + "개 찾음" : "") +
-      "</span>";
-
-    if (!hasIngredients) {
-      appendPopular(list);
+    // 처음 방문(필터 없음)일 때만 빠른 시작 카드
+    if (!state.selected.length && !state.query && state.cat === "all") {
       renderStartCard(list);
-      return;
     }
 
-    if (!res.all.length) {
-      renderEmpty(false);
-      appendPopular(list);
-      return;
+    var frag = document.createDocumentFragment();
+    var end = Math.min(state.visible, state.rows.length);
+    for (var i = 0; i < end; i++) {
+      frag.appendChild(dishNode(state.rows[i], i, state.selected.length > 0));
     }
+    list.appendChild(frag);
 
-    var rows = res.all;
-    var limit = state.showAllDishes ? rows.length : Math.min(8, rows.length);
-
-    for (var i = 0; i < limit; i++) {
-      list.appendChild(dishNode(rows[i], i, true));
-    }
-
-    if (rows.length > limit) {
+    if (state.rows.length > end) {
       var more = document.createElement("button");
       more.type = "button";
-      more.className = "ghost-btn";
-      more.style.alignSelf = "center";
-      more.style.marginTop = "4px";
-      more.textContent = "요리 " + (rows.length - limit) + "개 더 보기";
+      more.className = "ghost-btn more-btn";
+      more.textContent = "레시피 " + (state.rows.length - end).toLocaleString("ko-KR") + "개 더 보기";
       more.addEventListener("click", function () {
-        state.showAllDishes = true;
-        renderResults();
+        var start = state.visible;
+        state.visible = Math.min(state.visible + 24, state.rows.length);
+        more.parentNode.removeChild(more);
+        var f = document.createDocumentFragment();
+        for (var j = start; j < state.visible; j++) {
+          f.appendChild(dishNode(state.rows[j], j, state.selected.length > 0));
+        }
+        list.appendChild(f);
+        if (state.rows.length > state.visible) {
+          list.appendChild(more);
+          more.textContent = "레시피 " + (state.rows.length - state.visible).toLocaleString("ko-KR") + "개 더 보기";
+        }
       });
       list.appendChild(more);
     }
@@ -1013,18 +1214,18 @@
   ];
 
   function appendPopular(list) {
+    var frag = document.createDocumentFragment();
     POPULAR_IDS.forEach(function (id, i) {
-      var d = DISHES.filter(function (x) { return x.id === id; })[0];
+      var d = null;
+      for (var k = 0; k < RECIPES.length; k++) {
+        if (RECIPES[k].id === id) { d = RECIPES[k]; break; }
+      }
       if (!d) return;
-      list.appendChild(dishNode({
-        dish: d,
-        hit: [],
-        missing: [],
-        bonus: [],
-        percent: 0,
-        ready: false,
+      frag.appendChild(dishNode({
+        dish: d, hit: [], missing: [], bonus: [], percent: 0, ready: false,
       }, i, false));
     });
+    list.appendChild(frag);
   }
 
   function renderStartCard(list) {
@@ -1032,7 +1233,8 @@
     box.className = "empty compact";
     box.innerHTML =
       '<h3>가진 재료만 골라도 돼요</h3>' +
-      "<p>위에서 재료를 누르면<br>지금 바로 만들 수 있는 요리를 찾아드려요.</p>" +
+      "<p>위에서 재료를 누르면 지금 바로 만들 수 있는 요리를 찾아드려요.<br>" +
+      "재료 없이도 검색이나 카테고리로 1,000개가 넘는 레시피를 둘러볼 수 있어요.</p>" +
       '<button type="button" class="quick-start" id="quickStart">자주 있는 재료로 시작하기</button>';
     list.appendChild(box);
     bindQuickStart(box);
@@ -1043,7 +1245,6 @@
     if (!quick) return;
     quick.addEventListener("click", function () {
       state.selected = ["egg", "kimchi", "rice", "pa"];
-      state.showAllDishes = false;
       renderChips();
       renderSummary();
       renderResults();
@@ -1057,9 +1258,10 @@
     box.className = "empty compact";
     box.innerHTML =
       '<span class="e-emoji">🧑‍🍳</span>' +
-      "<h3>이 재료로는 아직 레시피가 없어요</h3>" +
-      "<p>재료를 한두 개 더 골라보세요.<br>아래는 오늘 인기 레시피예요.</p>";
+      "<h3>조건에 맞는 레시피가 없어요</h3>" +
+      "<p>재료를 한두 개 더 고르거나, 검색어·카테고리를 바꿔보세요.<br>아래는 오늘 인기 레시피예요.</p>";
     el.dishList.appendChild(box);
+    appendPopular(el.dishList);
   }
 
   function dishNode(row, index, showMatch) {
@@ -1067,10 +1269,8 @@
     var card = document.createElement("button");
     card.type = "button";
     card.className = "dish" + (row.ready ? " is-ready" : "");
-    card.style.animationDelay = Math.min(index * 0.035, 0.25) + "s";
+    if (index < 12) card.style.animationDelay = Math.min(index * 0.035, 0.25) + "s";
     card.setAttribute("aria-label", d.name + " 레시피 보기");
-
-    var levelText = d.level >= 2 ? "보통" : "쉬움";
 
     var html = "";
     html += '<div class="dish-top">';
@@ -1079,8 +1279,9 @@
     html += '<div class="dish-name">' + escapeHtml(d.name);
     if (row.ready) html += '<span class="ready-tag">바로 가능</span>';
     html += "</div>";
-    html += '<div class="dish-meta"><span>⏱ ' + d.time + "분</span><i>·</i><span>난이도 " + levelText + "</span>";
-    if (row.bonus.length) html += "<i>·</i><span>보너스 재료 " + row.bonus.length + "개</span>";
+    html += '<div class="dish-meta"><span class="cat-tag">' + escapeHtml(d.cat) + "</span>";
+    html += "<span>⏱ " + formatTime(d.time) + "</span><i>·</i><span>" + levelText(d.level) + "</span>";
+    if (d.reviews >= 30) html += "<i>·</i><span>후기 " + d.reviews + "</span>";
     html += "</div></div>";
 
     if (showMatch) {
@@ -1093,18 +1294,22 @@
 
     if (d.req.length) {
       html += '<div class="ing-row">';
-      d.req.forEach(function (id) {
+      var shown = showMatch ? d.req : d.req.slice(0, 5);
+      shown.forEach(function (id) {
         if (!showMatch) {
-          html += '<span class="ing plain">' + ingLabel(id) + "</span>";
+          html += '<span class="ing plain">' + escapeHtml(ingLabel(id)) + "</span>";
           return;
         }
         var has = row.hit.indexOf(id) !== -1;
-        html += '<span class="ing' + (has ? "" : " miss") + '">' + ingLabel(id) + "</span>";
+        html += '<span class="ing' + (has ? "" : " miss") + '">' + escapeHtml(ingLabel(id)) + "</span>";
       });
-      if (showMatch) {
+      if (!showMatch && d.req.length > 5) {
+        html += '<span class="ing more">+' + (d.req.length - 5) + "</span>";
+      }
+      if (showMatch && d.opt.length) {
         d.opt.forEach(function (id) {
           var has = state.selected.indexOf(id) !== -1;
-          html += '<span class="ing opt' + (has ? " has" : "") + '">' + ingLabel(id) + "</span>";
+          html += '<span class="ing opt' + (has ? " has" : "") + '">' + escapeHtml(ingLabel(id)) + "</span>";
         });
       }
       html += "</div>";
@@ -1125,12 +1330,13 @@
   }
 
   /* ------------------------------------------------------------------
-     8. 룰렛 모드
+     9. 룰렛 모드
      ------------------------------------------------------------------ */
   function renderFilters() {
     el.moodSeg.innerHTML = "";
     el.budgetSeg.innerHTML = "";
     el.methodSeg.innerHTML = "";
+    if (el.catSeg) el.catSeg.innerHTML = "";
 
     MOODS.forEach(function (m) {
       el.moodSeg.appendChild(segButton(m.label, state.mood === m.id, function () {
@@ -1156,6 +1362,16 @@
         save();
       }));
     });
+    if (el.catSeg) {
+      CATEGORIES.forEach(function (c) {
+        el.catSeg.appendChild(segButton(c.label, state.cat === c.id, function () {
+          state.cat = c.id;
+          renderFilters();
+          renderPoolHint();
+          save();
+        }));
+      });
+    }
   }
 
   function segButton(label, active, onClick) {
@@ -1168,8 +1384,10 @@
   }
 
   function getPool() {
-    return DISHES.filter(function (d) {
+    return ALLDISH.filter(function (d) {
       if (state.method !== "all" && d.method !== state.method) return false;
+      // 배달·외식만 볼 때는 음식 종류로 거르지 않는다
+      if (state.cat !== "all" && state.method !== "out" && d.cat !== state.cat) return false;
       if (state.mood !== "any" && d.moods.indexOf(state.mood) === -1) return false;
       if (state.budget === "low" && d.budget !== "low") return false;
       if (state.budget === "mid" && d.budget === "high") return false;
@@ -1183,7 +1401,7 @@
       el.poolLabel.textContent = "조건에 맞는 메뉴가 없어요 · 필터를 풀어보세요";
       el.spinBtn.disabled = true;
     } else {
-      el.poolLabel.textContent = pool.length + "개 메뉴 중에서 뽑아요";
+      el.poolLabel.textContent = pool.length.toLocaleString("ko-KR") + "개 메뉴 중에서 뽑아요";
       el.spinBtn.disabled = state.spinning;
     }
     renderPoolPreview(pool);
@@ -1195,14 +1413,18 @@
 
     var head = document.createElement("div");
     head.className = "preview-head";
-    head.innerHTML = "<span>이 중에서 뽑아요</span><b>" + pool.length + "개</b>";
+    head.innerHTML = "<span>이 중에서 뽑아요</span><b>" + pool.length.toLocaleString("ko-KR") + "개</b>";
     el.poolPreview.appendChild(head);
 
     if (!pool.length) return;
 
     var wrap = document.createElement("div");
     wrap.className = "chips";
-    pool.slice(0, 14).forEach(function (d) {
+    var picks = [];
+    for (var i = 0; i < 14 && i < pool.length; i++) {
+      picks.push(pool[Math.floor(Math.random() * pool.length)]);
+    }
+    picks.forEach(function (d) {
       var b = document.createElement("button");
       b.type = "button";
       b.className = "chip mini";
@@ -1211,12 +1433,6 @@
       b.addEventListener("click", function () { openDrawer(d); });
       wrap.appendChild(b);
     });
-    if (pool.length > 14) {
-      var more = document.createElement("span");
-      more.className = "chip mini more";
-      more.textContent = "+" + (pool.length - 14);
-      wrap.appendChild(more);
-    }
     el.poolPreview.appendChild(wrap);
   }
 
@@ -1230,7 +1446,7 @@
     el.reelEmoji.textContent = dish.emoji;
     el.reelName.textContent = dish.name;
     el.reelSub.textContent = dish.method === "home"
-      ? dish.time + "분 · 난이도 " + (dish.level >= 2 ? "보통" : "쉬움")
+      ? dish.cat + " · " + formatTime(dish.time) + " · " + levelText(dish.level)
       : dish.price + " · 배달·외식";
   }
 
@@ -1273,7 +1489,6 @@
     el.spinBtn.disabled = false;
     el.spinBtn.innerHTML = "<span>한 번 더 돌리기</span>";
     renderResult(target);
-    // 결과 카드와 같은 내용을 두 번 보여주지 않도록 룰렛을 잠시 접어둔다
     el.roulette.classList.add("hidden");
     if (navigator.vibrate) { try { navigator.vibrate(24); } catch (e) {} }
   }
@@ -1284,7 +1499,7 @@
 
     var wrap = document.createElement("div");
     var meta = dish.method === "home"
-      ? ["⏱ " + dish.time + "분", "난이도 " + (dish.level >= 2 ? "보통" : "쉬움"), "🏠 집에서"]
+      ? [dish.cat, "⏱ " + formatTime(dish.time), levelText(dish.level), "🏠 집에서"]
       : [dish.price, "🛵 배달·외식", moodLabel(dish.moods[0])];
 
     var html = "";
@@ -1339,14 +1554,14 @@
   }
 
   /* ------------------------------------------------------------------
-     9. 공유
+     10. 공유
      ------------------------------------------------------------------ */
   function shareText(dish) {
     var lines = [];
     lines.push("오늘 메뉴는 " + dish.name + " 당첨! " + dish.emoji);
     if (dish.comment) lines.push(dish.comment);
     if (dish.method === "home") {
-      lines.push("⏱ " + dish.time + "분 · 난이도 " + (dish.level >= 2 ? "보통" : "쉬움"));
+      lines.push("⏱ " + formatTime(dish.time) + " · " + levelText(dish.level) + " · " + dish.cat);
     } else {
       lines.push(dish.price + " · 배달·외식");
     }
@@ -1394,11 +1609,11 @@
   }
 
   /* ------------------------------------------------------------------
-     10. 레시피 드로어
+     11. 레시피 드로어
      ------------------------------------------------------------------ */
   function openDrawer(dish) {
     state.drawerDish = dish;
-    var has = function (id) { return state.selected.indexOf(id) !== -1; };
+    var has = function (id) { return !!id && state.selected.indexOf(id) !== -1; };
 
     var html = "";
     html += '<div class="drawer-grip"></div>';
@@ -1413,22 +1628,34 @@
     html += '<div class="drawer-body">';
 
     if (dish.method === "home") {
-      html += '<div class="drawer-section"><h3>재료</h3><div class="check-row">';
-      dish.req.forEach(function (id) {
+      html += '<div class="drawer-section"><h3>재료' +
+        (dish.servings ? ' <small>' + escapeHtml(dish.servings) + " 기준</small>" : "") +
+        "</h3>";
+      if (state.selected.length) {
+        var mine = 0;
+        dish.req.forEach(function (id) { if (has(id)) mine++; });
+        html += '<p class="drawer-match">내 재료로 <b>' + mine + " / " + dish.req.length +
+          "</b> 준비됨</p>";
+      }
+      html += '<ul class="ing-list">';
+      dish.ing.forEach(function (row) {
+        var name = row[0], amt = row[1] || "", id = row[2] || "";
         var ok = has(id);
-        html += '<span class="check' + (ok ? "" : " no") + '">' + (ok ? "✓ " : "+ ") + ingLabel(id) + "</span>";
+        var essential = id && dish.req.indexOf(id) !== -1;
+        html += '<li class="' + (ok ? "is-on" : "") + '">' +
+          '<span class="ing-tick">' + (ok ? "✓" : "·") + "</span>" +
+          '<span class="ing-name">' + escapeHtml(name) + "</span>" +
+          '<span class="ing-amt">' + escapeHtml(amt) + (essential ? "" : "") + "</span></li>";
       });
-      dish.opt.forEach(function (id) {
-        var ok = has(id);
-        html += '<span class="check' + (ok ? "" : " no") + '" style="opacity:' + (ok ? 1 : 0.62) + '">' + (ok ? "✓ " : "· ") + ingLabel(id) + " (선택)</span>";
-      });
-      html += "</div></div>";
+      html += "</ul></div>";
 
-      html += '<div class="drawer-section"><h3>만드는 법</h3><ol class="steps">';
-      dish.steps.forEach(function (s, i) {
-        html += "<li><b>" + (i + 1) + "</b><span>" + escapeHtml(s) + "</span></li>";
-      });
-      html += "</ol></div>";
+      if (dish.steps.length) {
+        html += '<div class="drawer-section"><h3>만드는 법</h3><ol class="steps">';
+        dish.steps.forEach(function (s, i) {
+          html += "<li><b>" + (i + 1) + "</b><span>" + escapeHtml(s) + "</span></li>";
+        });
+        html += "</ol></div>";
+      }
     } else {
       html += '<div class="drawer-section"><h3>메뉴 정보</h3><div class="check-row">';
       html += '<span class="check">' + escapeHtml(dish.price) + "</span>";
@@ -1441,6 +1668,14 @@
 
     if (dish.tip) {
       html += '<div class="tip-box"><b>💡 팁</b> ' + escapeHtml(dish.tip) + "</div>";
+    }
+
+    if (dish.src) {
+      html += '<div class="source-box">' +
+        '<a href="' + escapeHtml(dish.src) + '" target="_blank" rel="noopener noreferrer">' +
+        "만개의레시피 원문 보기 ↗</a>" +
+        (dish.author ? '<span class="src-author">' + escapeHtml(dish.author) + "</span>" : "") +
+        "</div>";
     }
     html += "</div>";
 
@@ -1466,7 +1701,8 @@
 
   function drawerSub(dish) {
     if (dish.method === "home") {
-      return "⏱ " + dish.time + "분 · 난이도 " + (dish.level >= 2 ? "보통" : "쉬움");
+      return [dish.cat, "⏱ " + formatTime(dish.time), levelText(dish.level)]
+        .filter(Boolean).join(" · ");
     }
     return dish.price + " · 배달·외식";
   }
@@ -1478,7 +1714,7 @@
   }
 
   /* ------------------------------------------------------------------
-     11. 탭 전환 / 토스트
+     12. 탭 전환 / 토스트
      ------------------------------------------------------------------ */
   function setTab(tab) {
     state.tab = tab;
@@ -1503,7 +1739,7 @@
   }
 
   /* ------------------------------------------------------------------
-     12. 초기화
+     13. 초기화
      ------------------------------------------------------------------ */
   function init() {
     el.chipList = $("#chipList");
@@ -1513,11 +1749,16 @@
     el.selSummary = $("#selSummary");
     el.resultHead = $("#resultHead");
     el.dishList = $("#dishList");
+    el.catPills = $("#catPills");
+    el.searchInput = $("#dishSearch");
+    el.searchClear = $("#searchClear");
+    el.heroStat = $("#heroStat");
     el.viewFridge = $("#view-fridge");
     el.viewRoulette = $("#view-roulette");
     el.moodSeg = $("#moodSeg");
     el.budgetSeg = $("#budgetSeg");
     el.methodSeg = $("#methodSeg");
+    el.catSeg = $("#catSeg");
     el.poolLabel = $("#poolLabel");
     el.reel = $("#reel");
     el.reelEmoji = $("#reelEmoji");
@@ -1561,12 +1802,33 @@
       }
 
       el.customInput.value = "";
-      state.showAllDishes = false;
       renderChips();
       renderSummary();
       renderResults();
       save();
     });
+
+    var searchTimer = null;
+    if (el.searchInput) {
+      el.searchInput.addEventListener("input", function () {
+        var value = el.searchInput.value;
+        if (searchTimer) clearTimeout(searchTimer);
+        searchTimer = setTimeout(function () {
+          state.query = value.trim();
+          if (el.searchClear) el.searchClear.classList.toggle("hidden", !state.query);
+          renderResults();
+        }, 140);
+      });
+    }
+    if (el.searchClear) {
+      el.searchClear.addEventListener("click", function () {
+        el.searchInput.value = "";
+        state.query = "";
+        el.searchClear.classList.add("hidden");
+        renderResults();
+        el.searchInput.focus();
+      });
+    }
 
     el.tabs.forEach(function (btn) {
       btn.addEventListener("click", function () { setTab(btn.dataset.view); });
@@ -1584,9 +1846,15 @@
       if (event.key === "Escape" && !el.drawer.hidden) closeDrawer();
     });
 
+    if (el.heroStat) {
+      el.heroStat.textContent = "집밥 레시피 " +
+        HOME_RECIPES.length.toLocaleString("ko-KR") + "가지 · 재료 " + INGREDIENTS.length + "종";
+    }
+
     // 초기 렌더
     renderChips();
     renderSummary();
+    renderCatPills();
     renderFilters();
     renderPoolHint();
     setReel(null);

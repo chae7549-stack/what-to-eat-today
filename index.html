@@ -6,7 +6,7 @@
     <title>🍳 냉장고 파먹기 · 오늘 뭐 먹지</title>
     <meta
       name="description"
-      content="냉장고에 있는 재료만 골라도 만들 수 있는 요리를 찾아주고, 오늘 뭐 먹을지 룰렛으로 정해주는 앱. 계란·김치·두부 하나로 40가지 요리 추천."
+      content="냉장고에 있는 재료만 골라도 만들 수 있는 집밥 요리를 찾아주고, 오늘 뭐 먹을지 룰렛으로 정해주는 앱. 계란·김치·두부 하나로 만들 수 있는 1,000개가 넘는 레시피 수록."
     />
     <meta name="color-scheme" content="light" />
     <meta name="theme-color" content="#ff6b3d" />
@@ -49,6 +49,7 @@
         <p class="hero-sub">
           있는 재료로 <b>오늘 뭐 먹을지</b> 바로 정해드려요
         </p>
+        <p class="hero-stat" id="heroStat">집밥 레시피 1,000+</p>
       </header>
 
       <main>
@@ -82,8 +83,25 @@
             </p>
           </div>
 
+          <!-- 레시피 검색 · 카테고리 -->
+          <div class="explore-bar">
+            <div class="search-row">
+              <span class="search-ico" aria-hidden="true">🔍</span>
+              <input
+                id="dishSearch"
+                type="search"
+                inputmode="search"
+                autocomplete="off"
+                placeholder="메뉴·재료 검색 (예: 김치, 두부)"
+                aria-label="레시피 검색"
+              />
+              <button type="button" id="searchClear" class="search-clear hidden" aria-label="검색어 지우기">✕</button>
+            </div>
+            <div id="catPills" class="pills" role="group" aria-label="카테고리"></div>
+          </div>
+
           <div id="resultHead" class="result-head">
-            <h2>오늘의 인기 레시피</h2>
+            <h2>전체 집밥 레시피</h2>
           </div>
 
           <div id="dishList" class="dish-list" aria-live="polite"></div>
@@ -132,6 +150,10 @@
               <span class="filter-label">방식</span>
               <div class="seg" id="methodSeg" role="group" aria-label="방식"></div>
             </div>
+            <div class="filter-row">
+              <span class="filter-label">종류</span>
+              <div class="seg" id="catSeg" role="group" aria-label="음식 종류"></div>
+            </div>
           </div>
 
           <div class="roulette">
@@ -175,6 +197,10 @@
           <span aria-hidden="true">🎲</span>오늘 뭐 먹지
         </button>
       </nav>
+
+      <footer class="foot-note">
+        레시피 출처: 만개의레시피(10000recipe.com) · 직접 만든 큐레이션 레시피
+      </footer>
     </div>
 
     <!-- ================= 레시피 드로어 ================= -->
@@ -191,6 +217,7 @@
       </p>
     </noscript>
 
+    <script src="./data/recipes-data.js" defer></script>
     <script src="./app.js" defer></script>
   </body>
 </html>
