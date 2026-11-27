@@ -1548,7 +1548,7 @@
       if (found) {
         if (state.selected.indexOf(found.id) === -1) {
           state.selected.push(found.id);
-          toast("'" + found.label + "' 재료를 골랐어요");
+          toast("'" + raw + "' → " + found.label + " 재료로 추가했어요");
         } else {
           toast("이미 고른 재료예요");
         }
