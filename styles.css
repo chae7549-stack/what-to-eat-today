@@ -1907,3 +1907,21 @@ p {
     transition: none !important;
   }
 }
+
+/* v9.1 — 재료 칩을 조금 작고 촘촘하게 (174종을 훑기 편하도록) */
+.chip {
+  min-height: 38px;
+  padding: 0 12px 0 10px;
+  font-size: 13.5px;
+  gap: 5px;
+}
+.chip .chip-emoji {
+  font-size: 15px;
+}
+.ing-chips {
+  gap: 7px;
+}
+.sel-chips .chip.is-selected {
+  min-height: 34px;
+  font-size: 12.5px;
+}

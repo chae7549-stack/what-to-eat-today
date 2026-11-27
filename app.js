@@ -1911,17 +1911,12 @@
       html += "</div>";
       html += '<div class="check-row">';
       html += '<span class="check is-cat">' + (OUT_EMOJI[dish.cat] || "🛵") + " " + escapeHtml(dish.cat) + "</span>";
+      var bLabel = { under10k: "1만원 이하", "10to20k": "1만~2만원", over20k: "2만원 이상" }[dish.bracket] || "";
+      if (bLabel) html += '<span class="check is-budget">' + escapeHtml(bLabel) + "</span>";
       dish.moods.forEach(function (m) {
         html += '<span class="check is-mood">' + moodLabel(m) + "</span>";
       });
       html += "</div></div>";
-
-      if (dish.bracket) {
-        html += '<div class="drawer-section"><h3>예산대</h3><div class="check-row">';
-        var bLabel = { under10k: "1만원 이하", "10to20k": "1만~2만원", over20k: "2만원 이상" }[dish.bracket] || "";
-        html += '<span class="check is-budget">' + escapeHtml(bLabel) + "</span>";
-        html += "</div></div>";
-      }
     }
 
     if (dish.tip) {
