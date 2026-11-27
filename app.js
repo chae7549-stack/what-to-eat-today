@@ -974,25 +974,14 @@
       "</span>";
 
     if (!hasIngredients) {
-      renderEmpty(true);
-      var popular = ["kimchi-fried-rice", "tuna-mayo", "ganjang-gyeran-bap", "tteokbokki", "gyeranmari", "kimchi-ramyeon"];
-      popular.forEach(function (id, i) {
-        var d = DISHES.filter(function (x) { return x.id === id; })[0];
-        if (!d) return;
-        list.appendChild(dishNode({
-          dish: d,
-          hit: [],
-          missing: [],
-          bonus: [],
-          percent: 0,
-          ready: false,
-        }, i, false));
-      });
+      appendPopular(list);
+      renderStartCard(list);
       return;
     }
 
     if (!res.all.length) {
       renderEmpty(false);
+      appendPopular(list);
       return;
     }
 
@@ -1018,37 +1007,59 @@
     }
   }
 
-  function renderEmpty(defaultMode) {
+  var POPULAR_IDS = [
+    "kimchi-fried-rice", "tuna-mayo", "ganjang-gyeran-bap",
+    "tteokbokki", "gyeranmari", "kimchi-ramyeon",
+  ];
+
+  function appendPopular(list) {
+    POPULAR_IDS.forEach(function (id, i) {
+      var d = DISHES.filter(function (x) { return x.id === id; })[0];
+      if (!d) return;
+      list.appendChild(dishNode({
+        dish: d,
+        hit: [],
+        missing: [],
+        bonus: [],
+        percent: 0,
+        ready: false,
+      }, i, false));
+    });
+  }
+
+  function renderStartCard(list) {
     var box = document.createElement("div");
-    box.className = "empty";
+    box.className = "empty compact";
+    box.innerHTML =
+      '<h3>가진 재료만 골라도 돼요</h3>' +
+      "<p>위에서 재료를 누르면<br>지금 바로 만들 수 있는 요리를 찾아드려요.</p>" +
+      '<button type="button" class="quick-start" id="quickStart">자주 있는 재료로 시작하기</button>';
+    list.appendChild(box);
+    bindQuickStart(box);
+  }
 
-    if (defaultMode) {
-      box.innerHTML =
-        '<span class="e-emoji">🧊</span>' +
-        "<h3>냉장고에 뭐가 있나요?</h3>" +
-        "<p>계란·김치·두부·밥처럼<br>자주 있는 재료를 눌러보세요.<br>없는 재료는 살 필요 없이 <b>가진 것만</b> 골라도 돼요.</p>" +
-        '<button type="button" class="quick-start" id="quickStart">자주 있는 재료로 시작하기</button>';
-    } else {
-      box.innerHTML =
-        '<span class="e-emoji">🧑‍🍳</span>' +
-        "<h3>이 재료로는 아직 레시피가 없어요</h3>" +
-        "<p>재료를 한두 개 더 골라보거나,<br>아래 인기 레시피를 참고해 보세요.</p>" +
-        '<button type="button" class="quick-start" id="quickStart">자주 있는 재료로 시작하기</button>';
-    }
-
-    el.dishList.appendChild(box);
+  function bindQuickStart(box) {
     var quick = $("#quickStart", box);
-    if (quick) {
-      quick.addEventListener("click", function () {
-        state.selected = ["egg", "kimchi", "rice", "pa"];
-        state.showAllDishes = false;
-        renderChips();
-        renderSummary();
-        renderResults();
-        save();
-        toast("자주 있는 재료 4개를 골랐어요");
-      });
-    }
+    if (!quick) return;
+    quick.addEventListener("click", function () {
+      state.selected = ["egg", "kimchi", "rice", "pa"];
+      state.showAllDishes = false;
+      renderChips();
+      renderSummary();
+      renderResults();
+      save();
+      toast("자주 있는 재료 4개를 골랐어요");
+    });
+  }
+
+  function renderEmpty() {
+    var box = document.createElement("div");
+    box.className = "empty compact";
+    box.innerHTML =
+      '<span class="e-emoji">🧑‍🍳</span>' +
+      "<h3>이 재료로는 아직 레시피가 없어요</h3>" +
+      "<p>재료를 한두 개 더 골라보세요.<br>아래는 오늘 인기 레시피예요.</p>";
+    el.dishList.appendChild(box);
   }
 
   function dishNode(row, index, showMatch) {

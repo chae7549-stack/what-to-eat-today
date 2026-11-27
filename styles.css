@@ -572,6 +572,36 @@ p {
   flex: 0 0 auto;
 }
 
+/* 결과가 없을 때의 짧은 시작 카드 */
+.empty.compact {
+  margin: 2px 0 0;
+  padding: 16px;
+  border-style: solid;
+  border-color: #ffe4d2;
+}
+
+.empty.compact .e-emoji {
+  font-size: 26px;
+  margin-bottom: 4px;
+  animation: none;
+}
+
+.empty.compact h3 {
+  font-size: 14px;
+}
+
+.empty.compact p {
+  font-size: 12.5px;
+  margin-top: 4px;
+  line-height: 1.5;
+}
+
+.empty.compact .quick-start {
+  margin-top: 10px;
+  min-height: 42px;
+  font-size: 13.5px;
+}
+
 /* ---------- 빈 상태 안내 ---------- */
 
 .empty {
@@ -948,10 +978,9 @@ p {
 
 @media (min-width: 520px) {
   .tabbar {
-    position: sticky;
-    bottom: 0;
     border-radius: 0 0 30px 30px;
     padding-bottom: 10px;
+    box-shadow: 0 -6px 24px rgba(126, 74, 32, 0.08);
   }
 }
 
