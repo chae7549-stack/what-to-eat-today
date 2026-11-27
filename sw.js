@@ -1,7 +1,7 @@
 /* 냉장고 파먹기 — 오프라인 지원 서비스 워커
    앱 껍데기(shell)를 캐시해 두고, 페이지 이동은 네트워크 우선으로 처리합니다. */
 
-var CACHE = "wtt-v2";
+var CACHE = "wtt-v3";
 var ASSETS = [
   "./",
   "./index.html",
@@ -68,17 +68,20 @@ self.addEventListener("fetch", function (event) {
     return;
   }
 
-  // 정적 자산: 캐시 우선 → 없으면 네트워크(성공 시 캐시에 저장)
+  // 정적 자산: 캐시를 먼저 보여주고, 뒤에서 새 파일을 받아 갱신한다.
+  // (앱을 업데이트했을 때 사용자가 옛 app.js에 갇히지 않도록)
   event.respondWith(
     caches.match(request).then(function (cached) {
-      if (cached) return cached;
-      return fetch(request).then(function (response) {
-        if (response && response.status === 200) {
-          var copy = response.clone();
-          caches.open(CACHE).then(function (cache) { cache.put(request, copy); });
-        }
-        return response;
-      });
+      var network = fetch(request)
+        .then(function (response) {
+          if (response && response.status === 200) {
+            var copy = response.clone();
+            caches.open(CACHE).then(function (cache) { cache.put(request, copy); });
+          }
+          return response;
+        })
+        .catch(function () { return cached; });
+      return cached || network;
     })
   );
 });

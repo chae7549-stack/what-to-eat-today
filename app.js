@@ -77,6 +77,13 @@
     ALIAS.sort(function (a, b) { return b.key.length - a.key.length; });
   })();
 
+  // 기본으로 보여줄 재료 칩 순서 (자주 쓰는 순)
+  var COMMON_ORDER = [
+    "egg", "kimchi", "tofu", "rice", "pa", "onion", "garlic", "ramen", "pasta", "tteok",
+    "potato", "pork", "chicken", "ham", "tuna", "fishcake", "bean", "mushroom", "cheese",
+    "flour", "curry", "sauce", "salt", "sugar", "pepper", "oil", "sesame_oil",
+  ];
+
   var GROUPS = [];
   INGREDIENTS.forEach(function (it) {
     if (GROUPS.indexOf(it.group) === -1) GROUPS.push(it.group);
@@ -899,6 +906,11 @@
     return min + "분";
   }
 
+  function shortName(name) {
+    var n = String(name || "");
+    return n.length > 30 ? n.slice(0, 29).trim() + "…" : n;
+  }
+
   function levelText(level) {
     if (level >= 3) return "어려움";
     if (level === 2) return "보통";
@@ -1019,8 +1031,12 @@
         });
       });
     } else {
+      COMMON_ORDER.map(function (id) { return BY_ID[id]; }).forEach(function (item) {
+        if (!item || !item.common) return;
+        frag.appendChild(chipNode(item.id, item.label, item.emoji, false));
+      });
       INGREDIENTS.forEach(function (item) {
-        if (!item.common) return;
+        if (!item.common || COMMON_ORDER.indexOf(item.id) !== -1) return;
         frag.appendChild(chipNode(item.id, item.label, item.emoji, false));
       });
     }
@@ -1276,7 +1292,7 @@
     html += '<div class="dish-top">';
     html += '<div class="dish-thumb">' + d.emoji + "</div>";
     html += '<div class="dish-main">';
-    html += '<div class="dish-name">' + escapeHtml(d.name);
+    html += '<div class="dish-name">' + escapeHtml(shortName(d.name));
     if (row.ready) html += '<span class="ready-tag">바로 가능</span>';
     html += "</div>";
     html += '<div class="dish-meta"><span class="cat-tag">' + escapeHtml(d.cat) + "</span>";
@@ -1307,10 +1323,13 @@
         html += '<span class="ing more">+' + (d.req.length - 5) + "</span>";
       }
       if (showMatch && d.opt.length) {
-        d.opt.forEach(function (id) {
+        d.opt.slice(0, 3).forEach(function (id) {
           var has = state.selected.indexOf(id) !== -1;
           html += '<span class="ing opt' + (has ? " has" : "") + '">' + escapeHtml(ingLabel(id)) + "</span>";
         });
+        if (d.opt.length > 3) {
+          html += '<span class="ing more">+' + (d.opt.length - 3) + "</span>";
+        }
       }
       html += "</div>";
     }

@@ -313,7 +313,7 @@ def main():
 
     check("./data/recipes-data.js" in html_src, "index.html이 레시피 데이터 파일을 불러옴")
     check("./data/recipes-data.js" in sw_src, "서비스 워커 캐시 목록에 레시피 데이터 포함")
-    check("wtt-v2" in sw_src, "서비스 워커 캐시 버전 갱신")
+    check(re.search(r'var CACHE = "wtt-v\d+"', sw_src) is not None, "서비스 워커 캐시 버전 표기")
 
     assets = set(re.findall(r'(?:href|src)="(\./[^"]+)"', html_src))
     missing_files = [a for a in sorted(assets) if a != "./" and not (ROOT / a.lstrip("./")).exists()]
