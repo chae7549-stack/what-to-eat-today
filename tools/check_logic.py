@@ -193,6 +193,12 @@ def main():
     check(not bad_req, f"필수 재료 2개 이상·모두 유효 id (문제 {bad_req[:5]})")
     check(not bad_cat, f"카테고리·시간·난이도 유효 (문제 {bad_cat[:5]})")
 
+    # 사이트 UI 문구·광고가 조리 단계에 남아 있지 않은지
+    junk = ("이미지크게보기", "텍스트만보기", "이미지작게보기", "원본보기", "http://", "https://",
+            "쿠팡", "배송", "구매", "광고")
+    dirty = [r["id"] + ":" + w for r in recipes for st in r["steps"] for w in junk if w in st]
+    check(not dirty, f"조리 단계에 화면 문구·광고 없음 (문제 {dirty[:3]})")
+
     # 카테고리 분포
     dist = {}
     for r in home:

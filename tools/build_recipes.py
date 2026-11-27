@@ -66,7 +66,8 @@ def norm_title(t):
 def clean_step(s):
     s = re.sub(r"<[^>]*>", " ", s or "")
     s = s.replace("&nbsp;", " ").replace("\u200b", "").replace("\ufeff", "")
-    s = re.sub(r"^[\s\-•·○●▶►*①-⑳0-9.)]+", "", s)  # 앞 번호/불릿 제거
+    s = re.sub(r"^[\s\-•·○●▶►*①-⑳]+", "", s)          # 앞 불릿 제거
+    s = re.sub(r"^\d{1,2}[.)]\s*", "", s)               # 앞 목록 번호만 제거 ("2분이"는 유지)
     s = re.sub(r"\s+", " ", s).strip()
     s = DROP_PAT.sub(" ", s)
     s = re.sub(r"\s+", " ", s).strip()
