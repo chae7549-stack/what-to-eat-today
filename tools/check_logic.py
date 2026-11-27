@@ -2,6 +2,10 @@
 
 - data/recipes-data.js + app.js 를 실제로 실행해서 앱 로직을 검증한다 (DOM은 가짜 객체)
 - 데이터: 집밥 1,400개 이상 · 배달·외식 100개 이상 · 재료 140종 이상
+- 저작권 안전성: 제목·조리 순서에 블로거 이름·출처 URL·홍보 문구가 없고, 조리 문장이
+  '~하세요 / ~해 주세요' 형태로 통일됐는지
+- 새 기능: 찜·최근 본 메뉴(localStorage), 인분 수 분량 환산, 부족한 재료 쿠팡 링크
+- 정적 페이지: about/privacy/terms, sitemap.xml, robots.txt, OpenGraph 메타
 - 재료 세분화: 진간장/국간장/고추장/쌈장/발사믹식초/올리브유/들기름 … 별칭 해석
 - 팁: 모든 레시피·배달 메뉴에 20자 이상 팁, 문장이 겹치지 않는지
 - 룰렛: 기분·예산·방식·집밥 종류·배달 종류 조합에 후보가 있는지
@@ -83,7 +87,12 @@ var document = {
 var window = { addEventListener: function () {}, scrollTo: function () {}, RECIPE_DB: null };
 var navigator = {};
 var location = { protocol: "https:", href: "https://example.com/" };
-var localStorage = { getItem: function () { return null; }, setItem: function () {} };
+var __store = {};
+var localStorage = {
+  getItem: function (k) { return __store[k] == null ? null : __store[k]; },
+  setItem: function (k, v) { __store[k] = String(v); },
+  removeItem: function (k) { delete __store[k]; }
+};
 """
 
 PROBE = r"""
@@ -92,6 +101,7 @@ globalThis.__t = {
   RECIPES: RECIPES.map(function (d) {
     return { id: d.id, name: d.name, cat: d.cat, emoji: d.emoji, time: d.time,
              level: d.level, moods: d.moods, budget: d.budget, method: d.method, price: d.price,
+             servings: d.servings,
              req: d.req, opt: d.opt, ing: d.ing, steps: d.steps, tip: d.tip, comment: d.comment,
              src: d.src, curated: !!d.curated };
   }),
@@ -114,7 +124,26 @@ globalThis.__t = {
     for (var i = 0; i < RECIPES.length; i++) if (RECIPES[i].id === id) return RECIPES[i];
     return null;
   },
-  searchRows: function (q) { state.query = q; return buildRows().length; }
+  searchRows: function (q) { state.query = q; return buildRows().length; },
+  CFG: CFG,
+  scaleAmount: scaleAmount,
+  formatNum: formatNum,
+  baseServings: baseServings,
+  readableAmount: readableAmount,
+  coupangLink: coupangLink,
+  ingredientListHtml: function (id, target) {
+    var d = __t.rowById(id); state.serving[id] = target;
+    return ingredientListHtml(d, function () { return false; });
+  },
+  servingsHtml: function (id) { return servingsHtml(__t.rowById(id)); },
+  toggleFav: function (id) { return toggleFav(id); },
+  isFav: function (id) { return isFav(id); },
+  favIds: function () { return favIds.slice(); },
+  recentIds: function () { return recentIds.slice(); },
+  pushRecent: function (id) { pushRecent(id); },
+  setFavView: function (v) { state.favView = v; return buildRows().map(function (r) { return r.dish.id; }); },
+  setServing: function (id, n) { state.serving[id] = n; },
+  drawerFor: function (id, n) { state.serving[id] = n; return __t.drawerHtml(__t.rowById(id)); }
 };
 """
 
@@ -216,8 +245,35 @@ def main():
           "모든 집밥 카테고리에 50개 이상")
     check(len(dist) >= 8, "집밥 카테고리 8종")
 
-    src_cnt = sum(1 for r in home if r["src"].startswith("https://www.10000recipe.com/recipe/"))
-    check(src_cnt >= 1300, f"원문 출처 링크가 있는 레시피 {src_cnt}개")
+    # 2-1. 저작권 안전성: 블로거 이름·출처 URL·홍보 문구가 남아 있지 않은지
+    banned = ("백종원", "백선생", "이연복", "최현석", "만개의레시피", "10000recipe", "만개",
+              "http://", "https://", "쿠팡", "배송", "구매", "광고", "협찬", "이미지크게보기",
+              "텍스트만보기", "원본보기", "블로그", "구독", "팔로우", "^^", "ㅋㅋ", "ㅎㅎ",
+              "레시피", "황금레시피", "꿀팁", "비법", "저는", "제가", "내가")
+    dirty = [r["id"] + ":" + w for r in home for text in [r["name"]] + r["steps"]
+             for w in banned if w in text]
+    check(not dirty, f"이름·조리 순서에 출처·홍보 문구 없음 (문제 {dirty[:4]})")
+
+    src_left = [r["id"] for r in recipes if r["src"]]
+    check(not src_left, f"데이터에 원문 출처 필드 없음 (남음 {len(src_left)}건)")
+
+    ends = ("하세요.", "주세요.", "으세요.", "세요.", "니다.")
+    bad_end = [r["id"] for r in home for st in r["steps"] if not st.endswith(ends)]
+    check(not bad_end, f"모든 조리 문장이 표준 어미 (어긋남 {len(bad_end)}건)")
+
+    long_steps = [(r["id"], len(st)) for r in home for st in r["steps"] if len(st) > 200]
+    check(len(long_steps) <= 10, f"200자를 넘는 조리 문장은 10개 이하 ({len(long_steps)}건)")
+    check(all(len(st) <= 260 for st in (r["steps"][0] for r in home if r["steps"])),
+          "모든 레시피의 첫 단계는 260자 이하")
+
+    no_end = [r["id"] for r in home for st in r["steps"] if not st.rstrip().endswith(".")]
+    check(not no_end, f"조리 문장이 마침표로 끝남 ({len(no_end)}건)")
+
+    titles_long = [r["name"] for r in home if len(r["name"]) > 20]
+    check(not titles_long, f"레시피 이름이 20자 이하 ({titles_long[:3]})")
+
+    title_no = [r["name"] for r in home if not r["name"].strip()]
+    check(not title_no, f"이름 없는 레시피 없음 ({len(title_no)}건)")
 
     # ---------- 3. 배달·외식 데이터 ----------
     price_re = re.compile(r"^\d{1,3}(,\d{3})*(원|~\d{1,3}(,\d{3})*원)$")
@@ -388,12 +444,15 @@ def main():
                     "'), hit:['egg'], missing:[], bonus:[], percent:50, ready:false}, true)")
     check("<div class=\"dish-name\">" in html and "match-num" in html, "요리 카드 HTML 생성")
 
-    collected = [r for r in home if r["src"]][0]
+    collected = home[0]
     drawer = ctx.eval("__t.drawerHtml(__t.rowById('" + collected["id"] + "'))")
     check("만드는 법" in drawer and "steps" in drawer, "레시피 드로어: 만드는 법 포함")
     check("ing-list" in drawer, "레시피 드로어: 재료 목록 포함")
-    check("10000recipe.com" in drawer, "레시피 드로어: 원문 출처 링크")
+    check("10000recipe" not in drawer and "원문 보기" not in drawer,
+          "레시피 드로어: 원문 출처 링크 없음")
     check("요리 팁" in drawer, "레시피 드로어: 요리 팁")
+    check("srv-row" in drawer and "인분" in drawer, "레시피 드로어: 인분 수 선택 버튼")
+    check("데이터 출처" not in drawer, "레시피 드로어: 출처 표기 없음")
 
     curated = ctx.eval("__t.drawerHtml(__t.rowById('kimchi-fried-rice'))")
     check("만드는 법" in curated and "김치" in curated, "큐레이션 레시피 드로어")
@@ -402,6 +461,86 @@ def main():
     check("예상 주문 가격" in out_drawer and "원" in out_drawer, "배달 드로어: 예상 가격")
     check("주문 팁" in out_drawer, "배달 드로어: 주문 팁")
     check("배달·외식" in out_drawer, "배달 드로어: 배달 표시")
+
+    # ---------- 9-1. 찜 · 최근 본 메뉴 ----------
+    check(js(ctx, "__t.favIds()") == [], "찜 목록은 처음에 비어 있음")
+    check(js(ctx, "__t.toggleFav('kimchi-fried-rice')") is True, "찜 추가")
+    check(js(ctx, "__t.isFav('kimchi-fried-rice')") is True, "찜 상태 확인")
+    ctx.eval("__t.toggleFav('dubu-kimchi')")
+    favs = js(ctx, "__t.favIds()")
+    check(favs[:1] == ["dubu-kimchi"] and len(favs) == 2, f"찜은 최근 것이 앞 ({favs})")
+    check(js(ctx, "__t.toggleFav('kimchi-fried-rice')") is False, "찜 해제")
+    check(js(ctx, "__t.isFav('kimchi-fried-rice')") is False, "찜 해제 확인")
+
+    ctx.eval("__t.pushRecent('kimchi-fried-rice')")
+    ctx.eval("__t.pushRecent('tteokbokki')")
+    ctx.eval("__t.pushRecent('kimchi-fried-rice')")
+    recents = js(ctx, "__t.recentIds()")
+    check(recents[:2] == ["kimchi-fried-rice", "tteokbokki"]
+          and recents.count("kimchi-fried-rice") == 1,
+          f"최근 본 메뉴는 중복 없이 최근 순 ({recents[:3]})")
+    for i in range(20):
+        ctx.eval("__t.pushRecent('" + home[i]["id"] + "')")
+    check(len(js(ctx, "__t.recentIds()")) <= 12, "최근 본 메뉴는 12개까지만 남음")
+
+    while js(ctx, "__t.favIds()"):
+        ctx.eval("__t.toggleFav(__t.favIds()[0])")
+    fav_rows = js(ctx, "__t.setFavView('fav')")
+    check(fav_rows == [], "찜이 없으면 찜한 메뉴가 비어 있음")
+    ctx.eval("__t.toggleFav('dubu-kimchi')")
+    fav_rows = js(ctx, "__t.setFavView('fav')")
+    check(fav_rows == ["dubu-kimchi"], f"찜한 메뉴 보기: 찜 목록만 ({fav_rows})")
+    ctx.eval("__t.toggleFav('dubu-kimchi')")
+    ctx.eval("__t.setState({favView:null})")
+
+    # ---------- 9-2. 인분 수 분량 환산 ----------
+    cases = [
+        ("1/2개", 2, "1개"), ("1/2개", 0.5, "1/4개"), ("3~4장", 2, "6~8장"),
+        ("1.5큰술", 2, "3큰술"), ("200g", 0.5, "100g"), ("1큰술", 1, "1큰술"),
+        ("약간", 3, "약간"), ("1/3개", 3, "1개"), ("2개", 2, "4개"),
+    ]
+    wrong_scale = [(a, f, ctx.eval("__t.scaleAmount(" + json.dumps(a) + "," + str(f) + ")"), w)
+                   for a, f, w in cases
+                   if ctx.eval("__t.scaleAmount(" + json.dumps(a) + "," + str(f) + ")") != w]
+    check(not wrong_scale, f"분량 환산 {len(cases)}건 (틀림 {wrong_scale[:3]})")
+    check(ctx.eval("String(__t.readableAmount('1개','0.2개'))") == "약간",
+          "아주 적어진 분량은 '약간'으로 표시")
+
+    # 실제 레시피 재료 목록이 인분 수에 따라 달라지는지 (분량이 있는 레시피로)
+    target = None
+    for r in home:
+        if any(re.search(r"\d", row[1] or "") for row in r["ing"]) and r["servings"]:
+            target = r
+            break
+    check(target is not None, "분량이 있는 레시피 확보")
+    one = ctx.eval("__t.ingredientListHtml('" + target["id"] + "',1)")
+    four = ctx.eval("__t.ingredientListHtml('" + target["id"] + "',4)")
+    check(one != four, "인분 수를 바꾸면 재료 분량이 달라짐")
+    srv_html = ctx.eval("__t.servingsHtml('" + target["id"] + "')")
+    check(all(f"{n}인분" in srv_html for n in (1, 2, 3, 4)), "인분 수 버튼 1·2·3·4 모두 있음")
+
+    ctx.eval("__t.setState({selected:[]})")
+    drawer_miss = ctx.eval("__t.drawerFor('" + collected["id"] + "', 2)")
+    check("부족한 재료" in drawer_miss and "coupang.com" in drawer_miss,
+          "부족한 재료에 쿠팡 검색 링크")
+    check(js(ctx, "__t.CFG.coupangPartnersEnabled") is False,
+          "쿠팡 파트너스 기본값은 꺼짐")
+    link = ctx.eval("__t.coupangLink('대파')")
+    check(link.startswith("https://www.coupang.com/np/search?q=") and "lptag" not in link,
+          f"쿠팡 링크 기본형 ({link})")
+    check("이 포스팅" not in drawer_miss, "제휴가 꺼져 있으면 고지 문구 없음")
+
+    # 설정을 채우면 추적 태그와 고지가 붙는지
+    ctx.eval("__t.CFG.coupangPartnersEnabled = true; __t.CFG.coupangPartnersTag = 'AF1234567'")
+    tagged = ctx.eval("__t.coupangLink('대파')")
+    check("lptag=AF1234567" in tagged, "태그를 채우면 lptag 추적이 붙음")
+    drawer_on = ctx.eval("__t.drawerFor('" + collected["id"] + "', 2)")
+    check("이 포스팅은 쿠팡 파트너스" in drawer_on, "제휴가 켜지면 고지 문구 표시")
+    ctx.eval("__t.CFG.coupangPartnersEnabled = false; __t.CFG.coupangPartnersTag = ''")
+
+    # 카드에 하트가 붙는지
+    card_html = ctx.eval("__t.dishHtml({dish:__t.rowById('" + home[0]["id"] + "'), hit:[], missing:[], bonus:[], percent:0, ready:false}, false)")
+    check("fav-btn" in card_html and "찜하기" in card_html, "요리 카드에 찜 하트 버튼")
 
     # ---------- 10. 정적 파일 ----------
     html_src = io.open(ROOT / "index.html", encoding="utf-8").read()
@@ -434,10 +573,87 @@ def main():
     check("moreChipsBtn" not in app_src and "moreChipsBtn" not in html_src,
           "예전 '재료 더 보기' 버튼 제거됨")
 
+    # HTML id 중복
+    all_ids = re.findall(r'id="([^"]+)"', html_src)
+    dup_ids = sorted({i for i in all_ids if all_ids.count(i) > 1})
+    check(not dup_ids, f"HTML id 중복 없음 (중복 {dup_ids})")
+
+    # 수익화 설정 (MONETIZE_CONFIG)
+    check("window.MONETIZE_CONFIG" in html_src, "index.html에 MONETIZE_CONFIG 있음")
+    for key in ("gaMeasurementId", "adsenseClient", "adsenseSlot", "adfitUnit",
+                "coupangPartnersEnabled", "coupangPartnersTag", "coupangSearchBase",
+                "coupangDisclosure"):
+        check(key in html_src, f"MONETIZE_CONFIG '{key}' 슬롯 있음")
+    check("adsbygoogle" in app_src and "googletagmanager" in app_src and "ba.min.js" in app_src,
+          "광고·분석 스크립트는 설정이 채워질 때만 삽입")
+    check('class="ad-slot hidden"' in html_src, "광고 슬롯은 기본으로 숨김 (빈 광고 박스 없음)")
+
+    # OpenGraph / Twitter / canonical
+    for prop in ('property="og:title"', 'property="og:description"', 'property="og:image"',
+                 'property="og:url"', 'name="twitter:card"', 'name="twitter:title"',
+                 'name="twitter:image"'):
+        check(prop in html_src, f"메타 {prop}")
+    check('rel="canonical"' in html_src, "index.html canonical 링크")
+    check('application/ld+json' in html_src, "구조화 데이터(JSON-LD) 있음")
+
+    # 안내 페이지
+    pages = {"about.html": "서비스 소개", "privacy.html": "개인정보처리방침",
+             "terms.html": "이용약관"}
+    for page, title in pages.items():
+        path = ROOT / page
+        check(path.exists(), f"{page} 파일 있음")
+        if not path.exists():
+            continue
+        body = io.open(path, encoding="utf-8").read()
+        check(title in body, f"{page}: '{title}' 내용 있음")
+        check("pages.css" in body, f"{page}: 공용 스타일 연결")
+        check("index.html" in body, f"{page}: 앱으로 돌아가는 링크")
+        other = [q for q in pages if q != page]
+        check(all(q in body for q in other), f"{page}: 다른 안내 페이지 링크")
+        local = re.findall(r'href="(\./[^"#]+)"', body)
+        broken = [h for h in local if not (ROOT / h.lstrip("./").split("?")[0]).exists()]
+        check(not broken, f"{page}: 링크 대상 파일 존재 (깨짐 {broken})")
+
+    # sitemap.xml / robots.txt
+    sm = ROOT / "sitemap.xml"
+    rb = ROOT / "robots.txt"
+    check(sm.exists(), "sitemap.xml 있음")
+    check(rb.exists(), "robots.txt 있음")
+    if sm.exists():
+        import xml.etree.ElementTree as ET
+        try:
+            tree = ET.parse(sm)
+            locs = [e.text for e in tree.getroot().iter("{http://www.sitemaps.org/schemas/sitemap/0.9}loc")]
+        except Exception as exc:  # noqa: BLE001
+            locs = []
+            check(False, f"sitemap.xml 파싱 실패: {exc}")
+        check(len(locs) >= 4, f"sitemap URL {len(locs)}개")
+        base = "https://chae7549-stack.github.io/what-to-eat-today/"
+        for loc in locs:
+            rel = loc[len(base):] or "index.html"
+            check((ROOT / rel).exists(), f"sitemap URL 대상 존재: {rel}")
+    if rb.exists():
+        robots = io.open(rb, encoding="utf-8").read()
+        check("Sitemap:" in robots and "what-to-eat-today/sitemap.xml" in robots,
+              "robots.txt 에 sitemap 주소")
+        check("Disallow: /" not in robots, "robots.txt 가 전체를 막지 않음")
+
+    # 새 기능 UI가 HTML/CSS/JS에 모두 있는지
+    for el_id in ("favBtn", "recentBtn", "favCount", "recentCount", "adSlot"):
+        check(el_id in ids_in_html, f"새 UI 요소 '{el_id}' 있음")
+    check("./about.html" in html_src and "./privacy.html" in html_src and "./terms.html" in html_src,
+          "index.html 푸터에 안내 페이지 링크")
+
     # CSS 에 새 UI 클래스가 있는지
     css_src = io.open(ROOT / "styles.css", encoding="utf-8").read()
-    for cls in (".ing-tabs", ".sel-chips", ".price-card", ".chip.is-selected"):
+    for cls in (".ing-tabs", ".sel-chips", ".price-card", ".chip.is-selected",
+                ".quick-bar", ".fav-btn", ".srv-row", ".srv-chip", ".buy-main",
+                ".buy-chip", ".ad-disclosure", ".foot-links"):
         check(cls in css_src, f"CSS 에 {cls} 스타일 있음")
+
+    # 서비스 워커가 새 페이지를 캐시하는지
+    for page in ("./index.html", "./about.html", "./privacy.html", "./terms.html"):
+        check(page in sw_src, f"서비스 워커 캐시/이동 처리에 {page}")
 
     size_kb = (ROOT / "data" / "recipes-data.js").stat().st_size / 1024
     print(f"데이터 파일 {size_kb:.0f}KB")

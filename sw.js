@@ -1,13 +1,13 @@
 /* 냉장고 파먹기 — 오프라인 지원 서비스 워커
    앱 껍데기(shell)를 캐시해 두고, 페이지 이동은 네트워크 우선으로 처리합니다. */
 
-var CACHE = "wtt-v11";
+var CACHE = "wtt-v12";
+var PAGES = ["./", "./index.html", "./about.html", "./privacy.html", "./terms.html"];
 var ASSETS = [
-  "./",
-  "./index.html",
-  "./styles.css?v=11",
-  "./data/recipes-data.js?v=11",
-  "./app.js?v=11",
+  "./styles.css?v=12",
+  "./pages.css?v=12",
+  "./data/recipes-data.js?v=12",
+  "./app.js?v=12",
   "./manifest.webmanifest",
   "./icons/icon.svg",
   "./icons/icon-192.png",
@@ -20,7 +20,7 @@ self.addEventListener("install", function (event) {
     caches
       .open(CACHE)
       .then(function (cache) {
-        return cache.addAll(ASSETS).catch(function () {
+        return cache.addAll(PAGES.concat(ASSETS)).catch(function () {
           /* 일부 자산이 없어도 설치 자체는 진행 */
         });
       })
@@ -50,7 +50,7 @@ self.addEventListener("fetch", function (event) {
   var url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
 
-  // 페이지 이동: 네트워크 우선 → 오프라인이면 캐시된 index.html
+  // 페이지 이동: 네트워크 우선 → 오프라인이면 같은 경로의 캐시 → index.html
   if (request.mode === "navigate") {
     event.respondWith(
       fetch(request)
@@ -60,8 +60,9 @@ self.addEventListener("fetch", function (event) {
           return response;
         })
         .catch(function () {
-          return caches.match("./index.html").then(function (cached) {
-            return cached || caches.match("./");
+          var path = "." + url.pathname.replace(/^\/what-to-eat-today/, "");
+          return caches.match(path).then(function (cached) {
+            return cached || caches.match("./index.html") || caches.match("./");
           });
         })
     );

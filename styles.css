@@ -1925,3 +1925,244 @@ p {
   min-height: 34px;
   font-size: 12.5px;
 }
+
+/* ==========================================================================
+   v12 — 찜·최근 본 메뉴, 인분 수 조절, 부족한 재료(쿠팡), 푸터 링크
+   ========================================================================== */
+
+/* ---------- 찜 하트 (카드·드로어) ---------- */
+.dish .fav-btn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  line-height: 1;
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 2px 8px rgba(150, 96, 48, 0.12), inset 0 0 0 1px #f3e6d8;
+  transition: transform 0.15s ease, background 0.15s ease;
+  z-index: 2;
+}
+.dish .fav-btn:active {
+  transform: scale(0.9);
+}
+.dish .fav-btn.is-on {
+  background: #ffe9e4;
+  box-shadow: inset 0 0 0 1px #ffc8bb, 0 2px 8px rgba(255, 107, 61, 0.18);
+  animation: pop 0.22s ease;
+}
+.dish .dish-top {
+  padding-right: 34px;
+}
+
+.drawer-head .drawer-fav {
+  position: static;
+  margin-left: auto;
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 18px;
+  background: #fff3ec;
+  box-shadow: inset 0 0 0 1px #ffe0d0;
+}
+.drawer-head .drawer-fav.is-on {
+  background: #ffe9e4;
+  box-shadow: inset 0 0 0 1px #ffc8bb;
+}
+.drawer-head .drawer-close {
+  margin-left: 8px;
+}
+
+/* ---------- 내 메뉴 바로가기 ---------- */
+.quick-bar {
+  display: flex;
+  gap: 8px;
+  padding: 0 16px;
+  margin: 14px 0 2px;
+}
+.quick-chip {
+  flex: 1;
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border-radius: 14px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  box-shadow: var(--shadow-sm);
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--ink-2);
+  transition: transform 0.14s ease, border-color 0.14s ease, background 0.14s ease;
+}
+.quick-chip b {
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: 999px;
+  background: #f7ebdf;
+  color: var(--ink-2);
+  font-size: 11.5px;
+  font-weight: 900;
+  display: inline-grid;
+  place-items: center;
+}
+.quick-chip:active {
+  transform: translateY(1px);
+}
+.quick-chip[aria-pressed="true"] {
+  background: linear-gradient(160deg, #fff2e9, #ffe4d2);
+  border-color: var(--primary);
+  color: var(--primary-dark);
+}
+.quick-chip[aria-pressed="true"] b {
+  background: #fff;
+  color: var(--primary-dark);
+}
+
+/* ---------- 인분 수 조절 ---------- */
+.srv-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0 0;
+}
+.srv-label {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--ink-3);
+  margin-right: 2px;
+}
+.srv-chip {
+  flex: 1;
+  min-height: 38px;
+  border-radius: 12px;
+  border: 1px solid var(--line-strong);
+  background: var(--card-soft);
+  font-size: 12.5px;
+  font-weight: 800;
+  color: var(--ink-2);
+  transition: background 0.14s ease, border-color 0.14s ease, color 0.14s ease;
+}
+.srv-chip[aria-pressed="true"] {
+  background: var(--primary-soft);
+  border-color: var(--primary);
+  color: var(--primary-dark);
+}
+.srv-note {
+  margin-top: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--ink-3);
+}
+.srv-target {
+  color: var(--primary-dark);
+  font-weight: 800;
+}
+
+/* ---------- 부족한 재료 · 쿠팡 ---------- */
+.miss-note {
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #b5652f;
+  margin-bottom: 8px;
+}
+.buy-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.buy-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: #fff7ee;
+  border: 1px solid #ffe4cd;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: #a9542a;
+  text-decoration: none;
+}
+.buy-chip:active {
+  background: #ffeeda;
+}
+.buy-main {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 44px;
+  border-radius: 12px;
+  background: linear-gradient(150deg, #fff3e6, #ffe3cc);
+  border: 1px solid #ffd6b3;
+  font-size: 13.5px;
+  font-weight: 900;
+  color: #b1441b;
+  text-decoration: none;
+}
+.buy-main:active {
+  transform: translateY(1px);
+}
+.ad-disclosure {
+  margin-top: 8px;
+  font-size: 10.5px;
+  line-height: 1.5;
+  color: var(--ink-3);
+}
+
+/* ---------- 푸터 ---------- */
+.foot-note .foot-brand {
+  font-size: 12px;
+  font-weight: 900;
+  color: var(--ink-2);
+  margin-bottom: 4px;
+}
+.foot-note .foot-desc {
+  margin: 0 auto 10px;
+  max-width: 340px;
+}
+.foot-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.foot-links a {
+  color: var(--ink-2);
+  font-weight: 800;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+}
+.foot-links a:active,
+.foot-links a:hover {
+  color: var(--primary-dark);
+  border-bottom-color: var(--primary);
+}
+.foot-copy {
+  font-size: 10.5px;
+  color: var(--ink-3);
+}
+
+/* ---------- 광고 슬롯 (설정이 채워졌을 때만 보임) ---------- */
+.ad-slot:not(.hidden) {
+  padding: 10px;
+  border-style: solid;
+  border-color: var(--line);
+  background: #fffdf9;
+}
+.ad-slot .ad-label {
+  justify-self: end;
+  margin-bottom: 4px;
+}

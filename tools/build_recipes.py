@@ -23,6 +23,7 @@ sys.path.insert(0, str(ROOT / "tools"))
 import recipe_taxonomy as T  # noqa: E402
 import delivery_menus as D     # noqa: E402
 import food_tips as F          # noqa: E402
+import recipe_rewriter as RW   # noqa: E402
 
 RAW = [ROOT / "scratch" / "raw.jsonl", ROOT / "scratch" / "raw2.jsonl"]
 OUT = ROOT / "data" / "recipes-data.js"
@@ -101,6 +102,17 @@ def clean_ingredient(raw):
 
 AMOUNT_HINT = re.compile(
     r"(약간|조금|적당|적당량|한줌|한움큼|톡톡|취향껏|기호에|반컵|한컵|한공기|한대|한개|한모|한장)")
+
+
+def normalize_amount(amount):
+    """'1 큰 술' → '1큰술', '1/2 개' → '1/2개' 처럼 분량 표기를 붙여 쓴다."""
+    a = (amount or "").strip()
+    if not a:
+        return ""
+    a = re.sub(r"\s+", " ", a)
+    a = re.sub(r"(\d)\s+(큰술|작은술|숟가락|스푼|티스푼|컵|개|대|모|장|쪽|줌|꼬집|방울|국자|인분|g|kg|ml|L|Ts|ts|T|t)\b", r"\1\2", a)
+    a = re.sub(r"\b(한|두|세|네|반)\s+(큰술|작은술|숟가락|스푼|컵|개|대|모|장|쪽|줌|꼬집|국자)", r"\1\2", a)
+    return a.strip()
 
 
 def split_amount(text):
@@ -260,6 +272,45 @@ def curated_names():
         return re.findall(r'name:\s*"([^"]+)"', src)
 
 
+CAT_SHAPE = {
+    "밥·죽": "밥", "국·찌개": "찌개", "면·파스타": "파스타", "볶음·구이": "볶음",
+    "반찬": "반찬", "전·부침": "전", "분식·야식": "분식", "양식·기타": "요리",
+}
+
+
+def fallback_name(req, cat):
+    """제목을 남길 수 없을 때: 주재료 + 요리 형태로 이름을 만든다."""
+    pick = None
+    for rid in req:
+        item = BY_ID.get(rid)
+        if not item or item.get("pantry") or item.get("always"):
+            continue
+        pick = item["label"]
+        break
+    if pick is None and req:
+        pick = BY_ID.get(req[0], {}).get("label")
+    shape = CAT_SHAPE.get(cat, "요리")
+    return (pick + " " + shape).strip() if pick else shape
+
+
+def name_variants(name, req, used_keys):
+    """같은 이름이 이미 있으면 주재료를 앞에 붙여 구분한다."""
+    out = []
+    for rid in req:
+        item = BY_ID.get(rid)
+        if not item or item.get("pantry") or item.get("always"):
+            continue
+        label = item["label"]
+        if label in name:
+            continue
+        out.append(label + " " + name)
+    return out
+
+
+def dedupe_key(name):
+    return re.sub(r"[^0-9a-z가-힣]", "", (name or "").lower())
+
+
 def load_records():
     recs = []
     for path in RAW:
@@ -291,20 +342,12 @@ def build():
     dropped = Counter()
 
     for rec in recs:
-        name = (rec.get("name") or "").strip()
-        steps = [clean_step(s) for s in rec.get("steps") or []]
-        steps = [s for s in steps if s]
+        raw_name = (rec.get("name") or "").strip()
+        raw_steps = [str(x) for x in (rec.get("steps") or [])]
         ings_raw = [clean_ingredient(s) for s in rec.get("ingredients") or []]
         ings_raw = [s for s in ings_raw if s]
-        if not name or len(steps) < 2 or len(ings_raw) < 2:
+        if not raw_name or len(raw_steps) < 2 or len(ings_raw) < 2:
             dropped["부실"] += 1
-            continue
-        if len(" ".join(steps)) < 40:
-            dropped["조리순서 빈약"] += 1
-            continue
-        title = norm_title(name)
-        if not title or title in cur:
-            dropped["큐레이션과 중복"] += 1
             continue
 
         req, opt = [], []
@@ -333,50 +376,66 @@ def build():
             req = req[:10]
         opt = [x for x in opt if x not in req][:10]
 
-        # 제목 중복: 후기 많은 쪽 유지
-        dup_key = title
-        if dup_key in seen_titles:
-            dropped["제목 중복"] += 1
-            continue
-        seen_titles.add(dup_key)
-
         cat = rec.get("cat") or "양식·기타"
         if cat not in CAP:
             cat = "양식·기타"
 
-        text = name + " " + " ".join(steps)
+        # --- 제목·조리 순서를 표준 문장으로 다시 쓴다 ---
+        title = RW.clean_title(raw_name) or fallback_name(req, cat)
+        steps = RW.rewrite_steps(raw_steps)
+        if len(steps) < 2 or sum(len(x) for x in steps) < 40:
+            dropped["조리순서 빈약"] += 1
+            continue
+
+        # 제목 중복: 주재료를 붙여 구분하고, 그래도 겹치면 버린다
+        key = dedupe_key(title)
+        if not key or key in cur or key in seen_titles:
+            picked_name = None
+            for alt in name_variants(title, req, seen_titles):
+                alt_key = dedupe_key(alt)
+                if alt_key and alt_key not in cur and alt_key not in seen_titles:
+                    picked_name = alt
+                    break
+            if not picked_name:
+                dropped["제목 중복"] += 1
+                continue
+            title = picked_name
+            key = dedupe_key(title)
+        seen_titles.add(key)
+
+        text = title + " " + " ".join(steps)
         moods = list(MOOD_RULES.get(cat, ["hearty"]))
         for keys, mood in KEY_MOOD:
             if any(k in text for k in keys) and mood not in moods:
                 moods.append(mood)
         moods = moods[:3]
 
-        budget = "mid" if any(k in name for k in BUDGET_HIGH) else "low"
+        budget = "mid" if any(k in title for k in BUDGET_HIGH) else "low"
+        servings = re.sub(r"[^0-9인분]", "", rec.get("servings") or "")
+        if not re.fullmatch(r"[1-8]인분", servings):
+            servings = ""
 
         kept.append({
             "id": "r" + str(rec["id"]),
-            "name": name,
+            "name": title,
             "cat": cat,
             "emoji": pick_emoji(rec, req),
             "time": parse_time(rec.get("time_text"), rec.get("total_time")),
             "level": parse_level(rec.get("level")),
-            "servings": re.sub(r"[^0-9인분명개]", "", rec.get("servings") or "") or "",
+            "servings": servings,
             "req": req,
             "opt": opt,
             "moods": moods,
             "budget": budget,
-            "ing": ing_pairs[:20],
+            "ing": [[n, normalize_amount(a), i] for n, a, i in ing_pairs[:20]],
             "steps": steps[:12],
-            "src": rec.get("url", ""),
-            "author": (rec.get("author") or "")[:20],
-            "rating": rec.get("rating") or 0,
-            "reviews": rec.get("reviews") or 0,
-            "tip": make_tip(name, req, cat, "r" + str(rec["id"])),
+            "tip": make_tip(title, req, cat, "r" + str(rec["id"])),
+            "_reviews": rec.get("reviews") or 0,
         })
         per_cat[cat] += 1
 
     # 카테고리별 상한 적용 (후기 많은 순)
-    kept.sort(key=lambda r: (-r["reviews"], -len(r["steps"])))
+    kept.sort(key=lambda r: (-r["_reviews"], -len(r["steps"])))
     picked, cnt = [], Counter()
     for r in kept:
         if cnt[r["cat"]] >= CAP[r["cat"]]:
@@ -402,7 +461,7 @@ def build():
         cands = [r for r in by_ing.get(item["id"], []) if r["id"] not in picked_ids]
         if not cands:
             continue
-        cands.sort(key=lambda r: (-r["reviews"], -len(r["steps"])))
+        cands.sort(key=lambda r: (-r["_reviews"], -len(r["steps"])))
         cand = cands[0]
         same_cat = [r for r in picked if r["cat"] == cand["cat"]]
         if not same_cat:
@@ -418,7 +477,9 @@ def build():
     if swaps:
         print(f"희귀 재료 커버리지로 교체 {swaps}건")
 
-    picked.sort(key=lambda r: (r["cat"], -r["reviews"], r["name"]))
+    for r in picked:
+        r.pop("_reviews", None)
+    picked.sort(key=lambda r: (r["cat"], r["name"]))
 
     print("카테고리별 최종:", dict(cnt), "합계", len(picked))
     print("제외 사유:", dict(dropped))
@@ -432,7 +493,7 @@ def build():
 
     data = {
         "generatedAt": time.strftime("%Y-%m-%d"),
-        "source": "만개의레시피(10000recipe.com)",
+        "source": "직접 정리한 표준 조리 안내",
         "count": len(picked),
         "counts": {"home": len(picked), "out": len(menus), "total": len(picked) + len(menus)},
         "taxonomy": [
@@ -450,7 +511,7 @@ def build():
     body = json.dumps(data, ensure_ascii=False, separators=(",", ":"))
     js = (
         "/* 자동 생성 파일입니다. tools/build_recipes.py 로 다시 만드세요.\n"
-        f"   출처: 만개의레시피(10000recipe.com) · 집밥 {len(picked)}개 · 배달·외식 {len(menus)}개 · {data['generatedAt']} */\n"
+        f"   집밥 {len(picked)}개 · 배달·외식 {len(menus)}개 · {data['generatedAt']} */\n"
         "window.RECIPE_DB = " + body + ";\n"
     )
     io.open(OUT, "w", encoding="utf-8").write(js)

@@ -2,8 +2,10 @@
    냉장고 파먹기 — 오늘 뭐 먹지
    - 모드 1: 냉장고 재료 매칭 (보유 재료로 만들 수 있는 요리 추천)
    - 모드 2: 기분·예산·방식·카테고리 룰렛 (오늘 뭐 먹지?)
-   - 레시피: 직접 만든 큐레이션 57개 + 만개의레시피(10000recipe.com)에서
-             수집한 집밥 레시피 1,400여 개 + 배달·외식 메뉴 150개 (data/recipes-data.js)
+   - 레시피: 직접 만든 큐레이션 요리 + 표준 문장으로 다시 쓴 집밥 레시피
+             1,440개 + 배달·외식 메뉴 150개 (data/recipes-data.js)
+   - 로그인 없이 동작: 냉장고 선택·찜·최근 본 메뉴는 브라우저 localStorage 에만 저장
+   - 수익화: window.MONETIZE_CONFIG (index.html) 값이 채워지면 자동으로 켜진다
    - 공유: Web Share API → 클립보드 순으로 폴백
    ========================================================================== */
 
@@ -11,6 +13,158 @@
   "use strict";
 
   var DB = (typeof window !== "undefined" && window.RECIPE_DB) || null;
+
+  /* ------------------------------------------------------------------
+     0. 수익화 설정 · 로컬 저장소
+        MONETIZE_CONFIG 는 index.html 에서 채운다. 비어 있으면 아무것도 그리지 않는다.
+     ------------------------------------------------------------------ */
+  var CFG = Object.assign({
+    gaMeasurementId: "",
+    adsenseClient: "",
+    adsenseSlot: "",
+    adfitUnit: "",
+    coupangPartnersEnabled: false,
+    coupangPartnersTag: "",
+    coupangSearchBase: "https://www.coupang.com/np/search?q=",
+    coupangDisclosure:
+      "이 포스팅은 쿠팡 파트너스 활동의 일환으로, 이에 따른 일정액의 수수료를 제공받습니다.",
+  }, (typeof window !== "undefined" && window.MONETIZE_CONFIG) || {});
+
+  var FAV_KEY = "wtt:fav:v1";
+  var RECENT_KEY = "wtt:recent:v1";
+  var RECENT_MAX = 12;
+
+  var favIds = [];      // 찜한 메뉴 id (최근에 찜한 것이 앞)
+  var recentIds = [];   // 최근 본 메뉴 id (최근 것이 앞)
+
+  function readIdList(key) {
+    try {
+      var raw = localStorage.getItem(key);
+      var list = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(list)) return [];
+      return list.filter(function (v) { return typeof v === "string" && v; });
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function writeIdList(key, list) {
+    try {
+      localStorage.setItem(key, JSON.stringify(list));
+    } catch (e) { /* 사생활 모드 등: 저장 실패는 무시 */ }
+  }
+
+  function loadUserLists() {
+    favIds = readIdList(FAV_KEY);
+    recentIds = readIdList(RECENT_KEY).slice(0, RECENT_MAX);
+  }
+
+  function isFav(id) {
+    return favIds.indexOf(id) !== -1;
+  }
+
+  function toggleFav(id) {
+    var at = favIds.indexOf(id);
+    if (at === -1) {
+      favIds.unshift(id);
+    } else {
+      favIds.splice(at, 1);
+    }
+    favIds = favIds.slice(0, 100);
+    writeIdList(FAV_KEY, favIds);
+    return at === -1;
+  }
+
+  function pushRecent(id) {
+    var at = recentIds.indexOf(id);
+    if (at !== -1) recentIds.splice(at, 1);
+    recentIds.unshift(id);
+    recentIds = recentIds.slice(0, RECENT_MAX);
+    writeIdList(RECENT_KEY, recentIds);
+  }
+
+  function findDish(id) {
+    for (var i = 0; i < RECIPES.length; i++) {
+      if (RECIPES[i].id === id) return RECIPES[i];
+    }
+    return null;
+  }
+
+  /* ----- 인분 수에 맞춰 재료 분량 늘리고 줄이기 ----- */
+  var SERVING_CHOICES = [1, 2, 3, 4];
+
+  function baseServings(dish) {
+    var m = String((dish && dish.servings) || "").match(/(\d+)\s*인분/);
+    var n = m ? Number(m[1]) : 2;
+    if (!n || n < 1) n = 2;
+    if (n > 8) n = 8;
+    return n;
+  }
+
+  function parseNum(text) {
+    if (text == null) return NaN;
+    var t = String(text).trim();
+    var frac = t.match(/^(\d+)\s*\/\s*(\d+)$/);
+    if (frac) return Number(frac[1]) / Number(frac[2]);
+    var f = Number(t);
+    return isNaN(f) ? NaN : f;
+  }
+
+  function formatNum(v) {
+    if (!isFinite(v)) return "";
+    var rounded = Math.round(v * 100) / 100;
+    if (Math.abs(rounded - Math.round(rounded)) < 0.01) return String(Math.round(rounded));
+    var whole = Math.floor(rounded);
+    var frac = rounded - whole;
+    var table = [
+      [1 / 8, "1/8"], [1 / 6, "1/6"], [1 / 5, "1/5"], [1 / 4, "1/4"], [1 / 3, "1/3"],
+      [3 / 8, "3/8"], [2 / 5, "2/5"], [1 / 2, "1/2"], [3 / 5, "3/5"], [5 / 8, "5/8"],
+      [2 / 3, "2/3"], [3 / 4, "3/4"], [4 / 5, "4/5"], [5 / 6, "5/6"], [7 / 8, "7/8"],
+    ];
+    for (var i = 0; i < table.length; i++) {
+      if (Math.abs(frac - table[i][0]) < 0.02) {
+        return (whole ? whole + " " : "") + table[i][1];
+      }
+    }
+    return String(Math.round(rounded * 10) / 10);
+  }
+
+  // '1/2개', '3~4장', '1.5큰술' 같은 분량을 배수만큼 늘리거나 줄인다
+  function scaleAmount(amount, factor) {
+    var text = String(amount || "");
+    if (!text || !factor || Math.abs(factor - 1) < 0.001) return text;
+    if (/^(약간|조금|적당량|적당|취향껏|기호에\s*따라|한\s*줌|한줌|톡톡)$/.test(text.trim())) return text;
+
+    var tokenRe = /(\d+(?:\.\d+)?(?:\s*\/\s*\d+)?)(\s*~\s*(\d+(?:\.\d+)?(?:\s*\/\s*\d+)?))?/g;
+    return text.replace(tokenRe, function (whole, a, rangePart, b) {
+      var scaled = parseNum(a) * factor;
+      if (!isFinite(scaled)) return whole;
+      var out = formatNum(scaled);
+      if (rangePart && b != null) {
+        var scaledB = parseNum(b) * factor;
+        if (isFinite(scaledB)) out = out + "~" + formatNum(scaledB);
+      }
+      return out;
+    });
+  }
+
+  // 아주 작아진 개수·스푼 분량은 '약간'으로 표현한다
+  function readableAmount(original, scaled) {
+    var m = String(scaled || "").match(/^0(\.0+)?/);
+    if (m && /\d/.test(scaled) && !/^0$/.test(scaled)) {
+      if (/(개|큰술|스푼|컵|장|대|쪽|모|줌|꼬집|방울|국자|인분|통|봉지|캔)$/.test(scaled)) {
+        return "약간";
+      }
+    }
+    return scaled;
+  }
+
+  function servingAmount(row, dish, target) {
+    var base = baseServings(dish);
+    var factor = target / base;
+    var scaled = scaleAmount(row[1] || "", factor);
+    return readableAmount(row[1] || "", scaled);
+  }
 
   /* ------------------------------------------------------------------
      1. 재료 분류
@@ -160,9 +314,9 @@
       moods: ["alone", "hearty"], budget: "low", method: "home",
       steps: [
         "김치를 한입 크기로 썰고, 대파나 햄이 있으면 같이 다져 주세요.",
-        "팬에 기름을 두르고 김치를 2분간 볶아 신맛을 날려요.",
+        "팬에 기름을 두르고 김치를 2분간 볶아 신맛을 날려 주세요.",
         "밥을 넣고 김치국물 2큰술과 함께 고슬고슬하게 볶아 주세요.",
-        "한쪽에 계란을 풀어 익힌 뒤 비비고, 치즈가 있으면 올려 녹여요.",
+        "한쪽에 계란을 풀어 익힌 뒤 비비고, 치즈가 있으면 올려 녹여 주세요.",
       ],
       tip: "너무 익은 김치는 설탕 반 티스푼으로 신맛을 잡아 주세요.",
       comment: "김치 하나로 완성되는 국민 한 그릇이에요 🔥",
@@ -172,10 +326,10 @@
       req: ["egg", "pa"], opt: ["cheese", "carrot", "ham"],
       moods: ["alone", "light"], budget: "low", method: "home",
       steps: [
-        "계란 3개를 풀고 소금 한 꼮집과 잘게 썬 대파를 섞어요.",
+        "계란 3개를 풀고 소금 한 꼮집과 잘게 썬 대파를 섞어 주세요.",
         "약불로 줄인 팬에 계란물을 얇게 부어 주세요.",
         "가장자리가 익으면 사각으로 접어 주세요.",
-        "계란물을 한 번 더 부어 접고, 김발로 모양을 잡으면 완성!",
+        "계란물을 한 번 더 부어 접고, 김발로 모양을 잡으면 완성됩니다.",
       ],
       tip: "불이 세면 부풀어 갈라져요. 약불이 포인트!",
       comment: "10분이면 도시락 반찬 완성 🥚",
@@ -187,7 +341,7 @@
       steps: [
         "참치캔 기름을 빼고 마요네즈 2큰술과 섞어 주세요.",
         "따뜻한 밥에 참치마요를 올려 주세요.",
-        "계란이 있으면 반숙 프라이로 올리고 대파를 솔솔 뿌려요.",
+        "계란이 있으면 반숙 프라이로 올리고 대파를 솔솔 뿌려 주세요.",
         "간장 반 스푼을 둘러 비벼 드세요.",
       ],
       tip: "참치 기름을 완전히 빼야 느끼하지 않아요.",
@@ -198,10 +352,10 @@
       req: ["tofu", "kimchi"], opt: ["pork", "pa"],
       moods: ["hearty", "night"], budget: "low", method: "home",
       steps: [
-        "두부를 1.5cm 두께로 썰어 끓는 물에 1분 데쳐요.",
+        "두부를 1.5cm 두께로 썰어 끓는 물에 1분 데쳐 주세요.",
         "팬에 김치를 볶다가 돼지고기가 있으면 함께 볶아 주세요.",
-        "접시에 두부를 깔고 김치볶음을 올려요.",
-        "대파와 참기름을 살짝 올리면 완성!",
+        "접시에 두부를 깔고 김치볶음을 올려 주세요.",
+        "대파와 참기름을 살짝 올리면 완성됩니다.",
       ],
       tip: "두부는 데치면 물이 빠져 더 담백해져요.",
       comment: "안주로도 밥반찬으로도 딱 🍲",
@@ -212,9 +366,9 @@
       moods: ["alone", "night"], budget: "low", method: "home",
       steps: [
         "따뜻한 밥에 계란 프라이를 올려 주세요.",
-        "간장 1큰술과 참기름 반 큰술을 둘러요.",
+        "간장 1큰술과 참기름 반 큰술을 둘러 주세요.",
         "노른자를 터뜨려 골고루 비벼 드세요.",
-        "버터 반 쪽을 더하면 고소함이 확 살아요.",
+        "버터 반 쪽을 더하면 고소함이 확 살아납니다.",
       ],
       tip: "간장은 밥 위에 둘러야 짜지 않아요.",
       comment: "5분 요리의 정석 ⏱️",
@@ -224,9 +378,9 @@
       req: ["ham", "rice"], opt: ["egg", "pa"],
       moods: ["alone", "hearty"], budget: "low", method: "home",
       steps: [
-        "스팸을 도톰하게 썰어 노릇하게 구워요.",
+        "스팸을 도톰하게 썰어 노릇하게 구워 주세요.",
         "밥 위에 스팸을 올리고 마요네즈를 둘러 주세요.",
-        "계란 프라이를 올리고 대파를 뿌려요.",
+        "계란 프라이를 올리고 대파를 뿌려 주세요.",
         "간장 반 스푼으로 간을 맞춰 비벼 드세요.",
       ],
       tip: "스팸은 키친타월에 눌러 기름을 빼면 담백해요.",
@@ -238,9 +392,9 @@
       moods: ["hearty", "hangover"], budget: "mid", method: "home",
       steps: [
         "돼지고기를 한입 크기로 썰어 팬에 볶아 주세요.",
-        "김치를 넣고 3분 더 볶아 감칠맛을 내요.",
+        "김치를 넣고 3분 더 볶아 감칠맛을 내 주세요.",
         "물 3컵을 붓고 10분간 끓여 주세요.",
-        "두부와 대파를 넣고 5분 더 끓이면 완성!",
+        "두부와 대파를 넣고 5분 더 끓이면 완성됩니다.",
       ],
       tip: "김치국물을 함께 넣어야 깊은 맛이 나요.",
       comment: "국물까지 남기지 않는 그 맛 🍲",
@@ -251,9 +405,9 @@
       moods: ["hearty"], budget: "mid", method: "home",
       steps: [
         "감자와 양파, 두부를 한입 크기로 썰어 주세요.",
-        "물 3컵에 된장 1큰술을 풀어 끓여요.",
-        "감자부터 넣고 8분 끓인 뒤 두부와 양파를 넣어요.",
-        "대파를 넣고 3분 더 끓이면 완성!",
+        "물 3컵에 된장 1큰술을 풀어 끓여 주세요.",
+        "감자부터 넣고 8분 끓인 뒤 두부와 양파를 넣어 주세요.",
+        "대파를 넣고 3분 더 끓이면 완성됩니다.",
       ],
       tip: "된장은 체에 걸러 풀면 덩어리 없이 부드러워요.",
       comment: "밥 한 공기 부르는 집밥의 기본 🍚",
@@ -263,10 +417,10 @@
       req: ["ham", "kimchi", "ramen", "tofu"], opt: ["onion", "pa", "cheese"],
       moods: ["hearty", "night"], budget: "mid", method: "home",
       steps: [
-        "스팸과 두부, 김치를 먹기 좋게 썰어 냄비에 담아요.",
-        "고춧가루 1큰술, 간장 1큰술, 물 4컵을 붓고 끓여요.",
+        "스팸과 두부, 김치를 먹기 좋게 썰어 냄비에 담아 주세요.",
+        "고춧가루 1큰술, 간장 1큰술, 물 4컵을 붓고 끓여 주세요.",
         "김치가 익으면 라면 사리를 넣어 주세요.",
-        "라면이 익으면 치즈를 올려 불을 꺼요.",
+        "라면이 익으면 치즈를 올려 불을 꺼 주세요.",
       ],
       tip: "라면은 마지막에 넣어야 불지 않아요!",
       comment: "냉장고 재료로 만드는 얼큰한 한 그릇 🌶️",
@@ -277,9 +431,9 @@
       moods: ["alone", "light"], budget: "mid", method: "home",
       steps: [
         "파스타면을 소금물에 8분 삶아 주세요.",
-        "올리브유에 편마늘을 약불로 노릇하게 볶아요.",
-        "삶은 면과 면수 반 컵을 넣고 1분 볶아요.",
-        "소금·후추로 간하고 치즈를 뿌려 완성!",
+        "올리브유에 편마늘을 약불로 노릇하게 볶아 주세요.",
+        "삶은 면과 면수 반 컵을 넣고 1분 볶아 주세요.",
+        "소금·후추로 간하고 치즈를 뿌려 완성됩니다.",
       ],
       tip: "면수는 소스가 면에 붙게 해 주는 열쇠예요.",
       comment: "마늘 하나만 있으면 가능 🧄",
@@ -290,9 +444,9 @@
       moods: ["light", "hearty"], budget: "mid", method: "home",
       steps: [
         "양파와 마늘을 다져 올리브유에 볶아 주세요.",
-        "토마토를 썰어 넣고 8분간 조려요.",
-        "삶은 면과 면수를 넣고 2분 볶아요.",
-        "소금·후추 간하고 치즈를 뿌려요.",
+        "토마토를 썰어 넣고 8분간 조려 주세요.",
+        "삶은 면과 면수를 넣고 2분 볶아 주세요.",
+        "소금·후추 간하고 치즈를 뿌려 주세요.",
       ],
       tip: "토마토 캔이 있으면 더 진한 맛이 나요.",
       comment: "집에서 만드는 이탈리안 기본 🍅",
@@ -302,10 +456,10 @@
       req: ["pasta", "milk", "cheese"], opt: ["ham", "mushroom", "garlic"],
       moods: ["hearty"], budget: "mid", method: "home",
       steps: [
-        "우유 1컵과 치즈 2장을 약불에 녹여 소스를 만들어요.",
+        "우유 1컵과 치즈 2장을 약불에 녹여 소스를 만들어 주세요.",
         "삶은 면을 넣고 2분간 버무려 주세요.",
-        "햄이나 버섯이 있으면 미리 볶아 함께 넣어요.",
-        "후추를 듬뿍 갈아 완성!",
+        "햄이나 버섯이 있으면 미리 볶아 함께 넣어 주세요.",
+        "후추를 듬뿍 갈아 완성됩니다.",
       ],
       tip: "생크림이 없어도 우유만으로 충분히 고소해요.",
       comment: "냉장고 우유로 만드는 크림파스타 🥛",
@@ -316,9 +470,9 @@
       moods: ["night", "hearty"], budget: "low", method: "home",
       steps: [
         "떡을 물에 5분 담가 말랑하게 해 주세요.",
-        "물 2컵에 고추장 2큰술, 설탕 1큰술을 풀어요.",
+        "물 2컵에 고추장 2큰술, 설탕 1큰술을 풀어 주세요.",
         "떡과 어묵, 대파를 넣고 8분 졸여 주세요.",
-        "불을 줄이고 치즈나 삶은 계란을 올려요.",
+        "불을 줄이고 치즈나 삶은 계란을 올려 주세요.",
       ],
       tip: "떡을 미지근한 물에 5분 불리면 쫄깃함이 살아요. 고추장은 멸치 육수에 풀어야 짜지 않아요.",
       comment: "야식의 왕, 실패 없는 떡볶이 🌶️",
@@ -328,10 +482,10 @@
       req: ["tteok", "ramen", "gochujang"], opt: ["fishcake", "egg", "cheese"],
       moods: ["night", "hearty"], budget: "low", method: "home",
       steps: [
-        "물 2컵에 고추장 2큰술, 설탕 1큰술을 풀어 끓여요.",
+        "물 2컵에 고추장 2큰술, 설탕 1큰술을 풀어 끓여 주세요.",
         "떡과 어묵을 넣고 5분 끓여 주세요.",
-        "라면 사리를 넣고 3분 더 끓여요.",
-        "계란이나 치즈를 올려 마무리!",
+        "라면 사리를 넣고 3분 더 끓여 주세요.",
+        "계란이나 치즈를 올려 마무리하세요.",
       ],
       tip: "국물이 많으면 라면이 불어요. 물 양을 지켜 주세요.",
       comment: "떡볶이에 라면은 반칙이죠 🍜",
@@ -341,10 +495,10 @@
       req: ["pork", "onion", "gochujang"], opt: ["garlic", "pa", "cabbage"],
       moods: ["hearty"], budget: "mid", method: "home",
       steps: [
-        "돼지고기에 고추장 2큰술, 간장 1큰술, 설탕 1큰술로 밑간해요.",
+        "돼지고기에 고추장 2큰술, 간장 1큰술, 설탕 1큰술로 밑간해 주세요.",
         "양파와 마늘을 먼저 볶아 주세요.",
-        "고기를 넣고 센 불에서 5분 볶아요.",
-        "대파와 양배추를 넣고 2분 더 볶으면 완성!",
+        "고기를 넣고 센 불에서 5분 볶아 주세요.",
+        "대파와 양배추를 넣고 2분 더 볶으면 완성됩니다.",
       ],
       tip: "고기를 10분 재워 두면 훨씬 맛있어요.",
       comment: "밥 위에 올리면 그 자체로 한 끼 🍚",
@@ -355,9 +509,9 @@
       moods: ["light", "alone"], budget: "low", method: "home",
       steps: [
         "감자 2개를 강판에 갈아 주세요.",
-        "물기를 살짝 따라내고 소금으로 간해요.",
-        "팬에 기름을 넉넉히 두르고 얇게 펴 구워요.",
-        "양쪽이 노릇해지면 접시에 담아 완성!",
+        "물기를 살짝 따라내고 소금으로 간해 주세요.",
+        "팬에 기름을 넉넉히 두르고 얇게 펴 구워 주세요.",
+        "양쪽이 노릇해지면 접시에 담아 완성됩니다.",
       ],
       tip: "감자를 갈 때 양파를 조금 넣으면 색이 예뻐요.",
       comment: "감자 세 개로 만드는 고소한 간식 🥔",
@@ -367,10 +521,10 @@
       req: ["fishcake", "pa"], opt: ["onion", "mushroom"],
       moods: ["hangover", "light"], budget: "low", method: "home",
       steps: [
-        "어묵을 꼬치나 한입 크기로 준비해요.",
-        "물 3컵에 다시마나 간장을 넣고 끓여요.",
+        "어묵을 꼬치나 한입 크기로 준비해 주세요.",
+        "물 3컵에 다시마나 간장을 넣고 끓여 주세요.",
         "어묵과 양파를 넣고 5분 끓여 주세요.",
-        "대파와 후추를 뿌려 마무리!",
+        "대파와 후추를 뿌려 마무리하세요.",
       ],
       tip: "어묵은 끓는 물에 한 번 데치면 잡내가 사라져요.",
       comment: "해장으로 딱, 뜨끈한 어묵탕 🍢",
@@ -380,10 +534,10 @@
       req: ["bean", "rice"], opt: ["egg", "pa", "garlic"],
       moods: ["hangover", "light"], budget: "low", method: "home",
       steps: [
-        "콩나물을 씻어 물 4컵과 함께 끓여요.",
+        "콩나물을 씻어 물 4컵과 함께 끓여 주세요.",
         "다진 마늘과 국간장으로 간을 해 주세요.",
-        "밥을 넣고 2분 더 끓여요.",
-        "계란을 풀어 넣고 대파를 뿌리면 완성!",
+        "밥을 넣고 2분 더 끓여 주세요.",
+        "계란을 풀어 넣고 대파를 뿌리면 완성됩니다.",
       ],
       tip: "콩나물은 뚜껑을 열고 끓여야 비린내가 없어요.",
       comment: "숙취엔 이거죠, 뜨끈한 국밥 🌱",
@@ -393,10 +547,10 @@
       req: ["potato", "onion", "carrot", "curry"], opt: ["pork", "chicken", "rice"],
       moods: ["hearty"], budget: "low", method: "home",
       steps: [
-        "감자, 당근, 양파를 깍둑썰기해 주세요.",
+        "감자, 당근, 양파를 깍둑썰기하세요.",
         "고기가 있으면 먼저 볶아 주세요.",
-        "물 3컵을 붓고 채소가 익을 때까지 12분 끓여요.",
-        "불을 끄고 카레가루를 풀어 5분 더 끓여요.",
+        "물 3컵을 붓고 채소가 익을 때까지 12분 끓여 주세요.",
+        "불을 끄고 카레가루를 풀어 5분 더 끓여 주세요.",
       ],
       tip: "카레는 하루 지나면 더 맛있어요. 다음날도 OK!",
       comment: "한 번 끓이면 이틀 든든 🍛",
@@ -406,10 +560,10 @@
       req: ["egg", "rice", "onion"], opt: ["ham", "cheese", "milk"],
       moods: ["alone", "hearty"], budget: "low", method: "home",
       steps: [
-        "양파와 햄을 볶다가 밥과 케첩 2큰술을 넣어 볶아요.",
+        "양파와 햄을 볶다가 밥과 케첩 2큰술을 넣어 볶아 주세요.",
         "밥을 그릇에 담아 모양을 잡아 주세요.",
-        "계란 2개를 풀어 약불에서 넓게 부쳐요.",
-        "밥 위에 계란을 덮고 케첩을 뿌리면 완성!",
+        "계란 2개를 풀어 약불에서 넓게 부쳐 주세요.",
+        "밥 위에 계란을 덮고 케첩을 뿌리면 완성됩니다.",
       ],
       tip: "계란에 우유 1큰술을 넣으면 더 부드러워요.",
       comment: "케첩 그림까지 그리고 싶은 비주얼 🍳",
@@ -420,9 +574,9 @@
       moods: ["alone", "light"], budget: "low", method: "home",
       steps: [
         "식빵을 팬에 살짝 구워 주세요.",
-        "계란과 햄을 각각 구워요.",
-        "빵 위에 계란, 햄, 치즈를 차례로 올려요.",
-        "케첩과 설탕을 살짝 뿌려 덮으면 완성!",
+        "계란과 햄을 각각 구워 주세요.",
+        "빵 위에 계란, 햄, 치즈를 차례로 올려 주세요.",
+        "케첩과 설탕을 살짝 뿌려 덮으면 완성됩니다.",
       ],
       tip: "양배추를 채 썰어 넣으면 아삭함이 살아요.",
       comment: "아침 10분, 길거리 감성 🍞",
@@ -432,10 +586,10 @@
       req: ["kimchi", "flour"], opt: ["pa"],
       moods: ["night", "hearty"], budget: "low", method: "home",
       steps: [
-        "김치를 잘게 썰고 부침가루 1컵과 김치국물을 섞어요.",
-        "반죽이 되직해지면 물로 농도를 맞춰요.",
-        "팬에 기름을 두르고 반죽을 얇게 펴 구워요.",
-        "양면이 노릇해지면 접시에 담아 완성!",
+        "김치를 잘게 썰고 부침가루 1컵과 김치국물을 섞어 주세요.",
+        "반죽이 되직해지면 물로 농도를 맞춰 주세요.",
+        "팬에 기름을 두르고 반죽을 얇게 펴 구워 주세요.",
+        "양면이 노릇해지면 접시에 담아 완성됩니다.",
       ],
       tip: "김치국물을 넣어야 색과 맛이 살아요.",
       comment: "비 오는 날 생각나는 그 맛 🌶️",
@@ -445,10 +599,10 @@
       req: ["egg", "pa"], opt: ["carrot"],
       moods: ["hangover", "light"], budget: "low", method: "home",
       steps: [
-        "계란 3개에 물 반 컵, 소금을 넣고 풀어요.",
-        "체에 한 번 걸러 냄비에 담아요.",
-        "약불에서 저어가며 6분 익혀요.",
-        "대파를 뿌리고 뚜껑을 덮어 1분 뜸 들여요.",
+        "계란 3개에 물 반 컵, 소금을 넣고 풀어 주세요.",
+        "체에 한 번 걸러 냄비에 담아 주세요.",
+        "약불에서 저어가며 6분 익혀 주세요.",
+        "대파를 뿌리고 뚜껑을 덮어 1분 뜸 들여 주세요.",
       ],
       tip: "약불에서 천천히 익혀야 부드러워요. 뚜껑을 덮고 익히면 구멍이 적게 나요.",
       comment: "숟가락으로 떠먹는 폭신한 계란찜 🥚",
@@ -458,10 +612,10 @@
       req: ["ramen", "kimchi"], opt: ["egg", "pa"],
       moods: ["night", "alone"], budget: "low", method: "home",
       steps: [
-        "물 550ml를 끓이고 김치를 먼저 넣어요.",
-        "스프와 건더기를 넣고 2분 끓여요.",
+        "물 550ml를 끓이고 김치를 먼저 넣어 주세요.",
+        "스프와 건더기를 넣고 2분 끓여 주세요.",
         "면을 넣고 3분 더 끓여 주세요.",
-        "계란을 풀어 넣고 대파를 올려 완성!",
+        "계란을 풀어 넣고 대파를 올려 완성됩니다.",
       ],
       tip: "김치를 먼저 끓이면 국물이 깊어져요.",
       comment: "야식의 정답, 김치라면 🍜",
@@ -471,10 +625,10 @@
       req: ["ramen", "cheese"], opt: ["egg"],
       moods: ["night", "alone"], budget: "low", method: "home",
       steps: [
-        "물 550ml에 스프를 넣고 끓여요.",
+        "물 550ml에 스프를 넣고 끓여 주세요.",
         "면을 넣고 3분 끓여 주세요.",
-        "불을 끄고 치즈를 올려 녹여요.",
-        "후추를 살짝 뿌리면 완성!",
+        "불을 끄고 치즈를 올려 녹여 주세요.",
+        "후추를 살짝 뿌리면 완성됩니다.",
       ],
       tip: "치즈는 불을 끈 뒤 올려야 부드럽게 녹아요.",
       comment: "매운맛을 잡아주는 치즈의 힘 🧀",
@@ -484,10 +638,10 @@
       req: ["tuna", "kimchi"], opt: ["tofu", "pa"],
       moods: ["hearty", "hangover"], budget: "low", method: "home",
       steps: [
-        "김치를 냄비에 넣고 3분 볶아요.",
-        "물 3컵을 붓고 8분 끓여요.",
-        "참치캔과 두부를 넣고 5분 더 끓여요.",
-        "대파와 후추를 뿌려 마무리!",
+        "김치를 냄비에 넣고 3분 볶아 주세요.",
+        "물 3컵을 붓고 8분 끓여 주세요.",
+        "참치캔과 두부를 넣고 5분 더 끓여 주세요.",
+        "대파와 후추를 뿌려 마무리하세요.",
       ],
       tip: "참치 기름을 빼면 국물이 깔끔해요. 참치는 마지막에 넣어야 부서지지 않아요.",
       comment: "고기 없이도 깊은 맛, 참치의 힘 🐟",
@@ -497,10 +651,10 @@
       req: ["tofu", "ganjang_jin"], opt: ["pa", "onion"],
       moods: ["light", "alone"], budget: "low", method: "home",
       steps: [
-        "두부를 도톰하게 썰어 물기를 빼요.",
+        "두부를 도톰하게 썰어 물기를 빼 주세요.",
         "팬에 두부를 노릇하게 지져 주세요.",
-        "간장 2큰술, 물 3큰술, 설탕 반 큰술을 섞어 부어요.",
-        "대파를 올리고 국물이 졸면 완성!",
+        "간장 2큰술, 물 3큰술, 설탕 반 큰술을 섞어 부어 주세요.",
+        "대파를 올리고 국물이 졸면 완성됩니다.",
       ],
       tip: "두부는 키친타월로 물기를 빼야 부서지지 않아요.",
       comment: "밥 도둑 반찬, 두부조림 🍲",
@@ -510,10 +664,10 @@
       req: ["bean", "garlic"], opt: ["pa"],
       moods: ["light"], budget: "low", method: "home",
       steps: [
-        "콩나물을 끓는 물에 3분 삶아요.",
+        "콩나물을 끓는 물에 3분 삶아 주세요.",
         "찬물에 헹궈 물기를 꼭 짜 주세요.",
-        "다진 마늘, 소금, 참기름으로 무쳐요.",
-        "대파를 솔솔 뿌려 완성!",
+        "다진 마늘, 소금, 참기름으로 무쳐 주세요.",
+        "대파를 솔솔 뿌려 완성됩니다.",
       ],
       tip: "삶은 뒤 찬물에 헹구면 아삭함이 살아요.",
       comment: "5분 반찬, 콩나물무침 🌱",
@@ -523,10 +677,10 @@
       req: ["potato", "ganjang_jin"], opt: ["onion", "carrot"],
       moods: ["light", "alone"], budget: "low", method: "home",
       steps: [
-        "감자를 한입 크기로 썰어 물기를 빼요.",
-        "팬에 기름을 두르고 감자를 노릇하게 볶아요.",
-        "간장 3큰술, 물 반 컵, 설탕 1큰술을 넣고 끓여요.",
-        "국물이 졸면 참기름과 통깨로 마무리!",
+        "감자를 한입 크기로 썰어 물기를 빼 주세요.",
+        "팬에 기름을 두르고 감자를 노릇하게 볶아 주세요.",
+        "간장 3큰술, 물 반 컵, 설탕 1큰술을 넣고 끓여 주세요.",
+        "국물이 졸면 참기름과 통깨로 마무리하세요.",
       ],
       tip: "감자를 먼저 볶으면 으깨지지 않아요.",
       comment: "달짝지근한 밥도둑 반찬 🥔",
@@ -537,9 +691,9 @@
       moods: ["light", "alone"], budget: "low", method: "home",
       steps: [
         "버섯을 먹기 좋게 찢어 주세요.",
-        "팬에 버터나 기름을 두르고 마늘을 볶아요.",
-        "버섯을 넣고 센 불에 4분 볶아요.",
-        "소금·후추로 간하고 완성!",
+        "팬에 버터나 기름을 두르고 마늘을 볶아 주세요.",
+        "버섯을 넣고 센 불에 4분 볶아 주세요.",
+        "소금·후추로 간하고 완성됩니다.",
       ],
       tip: "버섯은 물에 씻지 말고 키친타월로 닦아 주세요.",
       comment: "향이 좋아 고기 안 부럽습니다 🍄",
@@ -549,10 +703,10 @@
       req: ["chicken", "cabbage"], opt: ["tomato", "cucumber", "onion"],
       moods: ["light"], budget: "mid", method: "home",
       steps: [
-        "닭가슴살을 소금·후추로 밑간해 팬에 구워요.",
-        "양배추를 채 썰어 찬물에 5분 담가요.",
-        "닭가슴살을 먹기 좋게 찢어 올려요.",
-        "올리브유와 레몬즙, 소금으로 드레싱해요.",
+        "닭가슴살을 소금·후추로 밑간해 팬에 구워 주세요.",
+        "양배추를 채 썰어 찬물에 5분 담가 주세요.",
+        "닭가슴살을 먹기 좋게 찢어 올려 주세요.",
+        "올리브유와 레몬즙, 소금으로 드레싱해 주세요.",
       ],
       tip: "닭가슴살은 약불에서 천천히 익혀야 촉촉해요.",
       comment: "가볍지만 든든한 한 끼 🥗",
@@ -562,10 +716,10 @@
       req: ["chicken", "rice", "egg"], opt: ["onion", "pa", "carrot"],
       moods: ["alone", "light"], budget: "mid", method: "home",
       steps: [
-        "닭가슴살을 잘게 썰어 소금·후추로 밑간해요.",
+        "닭가슴살을 잘게 썰어 소금·후추로 밑간해 주세요.",
         "팬에 닭가슴살과 채소를 볶아 주세요.",
-        "밥을 넣고 간장 1큰술로 간하며 볶아요.",
-        "계란을 풀어 넣고 한 번 더 볶으면 완성!",
+        "밥을 넣고 간장 1큰술로 간하며 볶아 주세요.",
+        "계란을 풀어 넣고 한 번 더 볶으면 완성됩니다.",
       ],
       tip: "밥은 찬밥이 고슬고슬해서 좋아요. 닭가슴살은 우유에 20분 재우면 퍽퍽하지 않아요.",
       comment: "단백질 가득, 다이어터 볶음밥 🍗",
@@ -575,10 +729,10 @@
       req: ["cucumber", "garlic", "gochugaru"], opt: ["onion"],
       moods: ["light", "hangover"], budget: "low", method: "home",
       steps: [
-        "오이를 반달 모양으로 썰어 소금에 5분 절여요.",
+        "오이를 반달 모양으로 썰어 소금에 5분 절여 주세요.",
         "물기를 살짝 짜 주세요.",
-        "고춧가루, 다진 마늘, 식초, 설탕으로 무쳐요.",
-        "통깨를 뿌려 완성!",
+        "고춧가루, 다진 마늘, 식초, 설탕으로 무쳐 주세요.",
+        "통깨를 뿌려 완성됩니다.",
       ],
       tip: "절인 오이는 아삭함이 살아 있어요. 소금에 5분 절인 뒤 물기를 빼야 양념이 묽지 않아요.",
       comment: "입맛 없을 때 딱, 새콤달콤 🥒",
@@ -589,9 +743,9 @@
       moods: ["hearty"], budget: "mid", method: "home",
       steps: [
         "양배추를 한입 크기로 썰어 주세요.",
-        "돼지고기를 먼저 볶아 겉면을 익혀요.",
-        "양배추와 간장·굴소스를 넣고 4분 볶아요.",
-        "후추를 뿌려 완성!",
+        "돼지고기를 먼저 볶아 겉면을 익혀 주세요.",
+        "양배추와 간장·굴소스를 넣고 4분 볶아 주세요.",
+        "후추를 뿌려 완성됩니다.",
       ],
       tip: "센 불에 빠르게 볶아야 양배추가 아삭해요.",
       comment: "밥에 올리면 순식간에 사라져요 🥬",
@@ -601,10 +755,10 @@
       req: ["bread", "egg", "milk"], opt: ["butter", "cheese"],
       moods: ["alone", "light"], budget: "low", method: "home",
       steps: [
-        "계란 1개와 우유 반 컵, 설탕 1큰술을 섞어요.",
-        "식빵을 반으로 잘라 계란물에 적셔요.",
-        "버터 두른 팬에 약불로 노릇하게 구워요.",
-        "꿀이나 설탕을 뿌려 완성!",
+        "계란 1개와 우유 반 컵, 설탕 1큰술을 섞어 주세요.",
+        "식빵을 반으로 잘라 계란물에 적셔 주세요.",
+        "버터 두른 팬에 약불로 노릇하게 구워 주세요.",
+        "꿀이나 설탕을 뿌려 완성됩니다.",
       ],
       tip: "빵을 살짝 마르게 두면 계란물이 잘 배요.",
       comment: "카페 부럽지 않은 아침 🍞",
@@ -615,9 +769,9 @@
       moods: ["alone", "light"], budget: "low", method: "home",
       steps: [
         "식빵을 살짝 구워 주세요.",
-        "햄을 팬에 노릇하게 구워요.",
-        "빵-치즈-햄-치즈-빵 순서로 쌓아요.",
-        "전자레인지에 20초 돌려 치즈를 녹여요.",
+        "햄을 팬에 노릇하게 구워 주세요.",
+        "빵-치즈-햄-치즈-빵 순서로 쌓아 주세요.",
+        "전자레인지에 20초 돌려 치즈를 녹여 주세요.",
       ],
       tip: "양배추 채를 넣으면 아삭한 식감이 더해져요.",
       comment: "5분 완성, 든든한 간식 🥪",
@@ -628,8 +782,8 @@
       moods: ["hearty", "hangover"], budget: "low", method: "home",
       steps: [
         "냉장고 채소를 채 썰어 살짝 볶아 주세요.",
-        "밥 위에 채소를 색 맞춰 돌려 담아요.",
-        "고추장 1큰술, 참기름 반 큰술, 설탕 반 티스푼으로 양념장을 만들어요.",
+        "밥 위에 채소를 색 맞춰 돌려 담아 주세요.",
+        "고추장 1큰술, 참기름 반 큰술, 설탕 반 티스푼으로 양념장을 만들어 주세요.",
         "계란 프라이를 올리고 비벼 드세요.",
       ],
       tip: "양념장에 식초 반 스푼을 넣으면 더 산뜻해요.",
@@ -640,10 +794,10 @@
       req: ["fishcake", "ganjang_jin"], opt: ["onion", "pa"],
       moods: ["night", "alone"], budget: "low", method: "home",
       steps: [
-        "어묵을 먹기 좋게 썰어 끓는 물에 데쳐요.",
+        "어묵을 먹기 좋게 썰어 끓는 물에 데쳐 주세요.",
         "팬에 기름을 두르고 어묵을 볶아 주세요.",
-        "간장 1큰술, 물엿 1큰술, 고춧가루 반 티스푼을 넣어요.",
-        "대파와 통깨를 뿌려 완성!",
+        "간장 1큰술, 물엿 1큰술, 고춧가루 반 티스푼을 넣어 주세요.",
+        "대파와 통깨를 뿌려 완성됩니다.",
       ],
       tip: "물엿 대신 설탕 반 스푼도 괜찮아요.",
       comment: "도시락 단골 반찬 🍢",
@@ -653,10 +807,10 @@
       req: ["potato", "milk", "butter"], opt: ["onion", "bread"],
       moods: ["light"], budget: "low", method: "home",
       steps: [
-        "감자와 양파를 썰어 버터에 볶아요.",
-        "물 2컵을 붓고 감자가 익을 때까지 10분 끓여요.",
+        "감자와 양파를 썰어 버터에 볶아 주세요.",
+        "물 2컵을 붓고 감자가 익을 때까지 10분 끓여 주세요.",
         "믹서나 감자으깨기로 곱게 갈아 주세요.",
-        "우유를 넣고 약불에서 데우면 완성!",
+        "우유를 넣고 약불에서 데우면 완성됩니다.",
       ],
       tip: "우유는 마지막에 넣어야 분리되지 않아요.",
       comment: "빵 찍어 먹으면 그게 저녁 🥖",
@@ -666,10 +820,10 @@
       req: ["tofu", "butter"], opt: ["ganjang_jin", "pa"],
       moods: ["light", "alone"], budget: "low", method: "home",
       steps: [
-        "두부 물기를 빼고 도톰하게 썰어요.",
-        "팬에 버터를 녹이고 두부를 노릇하게 구워요.",
+        "두부 물기를 빼고 도톰하게 썰어 주세요.",
+        "팬에 버터를 녹이고 두부를 노릇하게 구워 주세요.",
         "간장 반 스푼을 살짝 발라 주세요.",
-        "대파를 뿌려 완성!",
+        "대파를 뿌려 완성됩니다.",
       ],
       tip: "버터에 간장만 더해도 근사한 안주가 돼요.",
       comment: "고소함 폭발, 두부버터구이 🧈",
@@ -679,10 +833,10 @@
       req: ["tuna", "potato", "ganjang_jin"], opt: ["onion"],
       moods: ["alone"], budget: "low", method: "home",
       steps: [
-        "감자를 썰어 기름에 살짝 볶아요.",
-        "간장 2큰술, 설탕 1큰술, 물 반 컵을 넣고 끓여요.",
-        "감자가 익으면 참치를 넣어요.",
-        "국물이 졸면 대파를 뿌려 마무리!",
+        "감자를 썰어 기름에 살짝 볶아 주세요.",
+        "간장 2큰술, 설탕 1큰술, 물 반 컵을 넣고 끓여 주세요.",
+        "감자가 익으면 참치를 넣어 주세요.",
+        "국물이 졸면 대파를 뿌려 마무리하세요.",
       ],
       tip: "참치는 마지막에 넣어야 부서지지 않아요.",
       comment: "반찬 하나로 밥 한 공기 뚝딱 🍚",
@@ -692,10 +846,10 @@
       req: ["tteok", "egg", "ganjang_guk"], opt: ["pa", "mushroom"],
       moods: ["hangover", "hearty"], budget: "low", method: "home",
       steps: [
-        "떡을 물에 10분 담가 불려요.",
-        "물 4컵에 국간장으로 간을 해 끓여요.",
-        "떡을 넣고 떠오를 때까지 5분 끓여요.",
-        "계란 지단과 대파를 올려 완성!",
+        "떡을 물에 10분 담가 불려 주세요.",
+        "물 4컵에 국간장으로 간을 해 끓여 주세요.",
+        "떡을 넣고 떠오를 때까지 5분 끓여 주세요.",
+        "계란 지단과 대파를 올려 완성됩니다.",
       ],
       tip: "떡이 떠오르면 다 익은 거예요. 떡은 찬물에 10분 불려야 국물이 텁텁하지 않아요.",
       comment: "명절 아니어도 좋은 떡국 🍡",
@@ -708,9 +862,9 @@
       moods: ["light"], budget: "low", method: "home",
       steps: [
         "상추와 토마토를 먹기 좋게 씻어 물기를 완전히 빼 주세요.",
-        "올리브유 2큰술, 발사믹식초 1큰술, 소금·후추를 섞어 드레싱을 만들어요.",
+        "올리브유 2큰술, 발사믹식초 1큰술, 소금·후추를 섞어 드레싱을 만들어 주세요.",
         "채소를 그릇에 담고 드레싱을 먹기 직전에 둘러 주세요.",
-        "치즈나 견과류가 있으면 부숴서 올리면 고소함이 더해져요.",
+        "치즈나 견과류가 있으면 부숴서 올리면 고소함이 더해집니다.",
       ],
       tip: "발사믹식초는 올리브유와 1:2로 섞어야 산미가 부드러워져요. 채소 물기를 빼야 드레싱이 묽지 않아요.",
       comment: "10분이면 완성되는 산뜻한 한 접시 🥗",
@@ -720,11 +874,11 @@
       req: ["rice_noodle", "chicken", "pa", "onion"], opt: ["lemon_juice", "gochu", "fish_sauce", "cilantro"],
       moods: ["hangover", "light"], budget: "mid", method: "home",
       steps: [
-        "닭고기와 양파, 대파를 넣고 20분 끓여 육수를 만들어요.",
+        "닭고기와 양파, 대파를 넣고 20분 끓여 육수를 만들어 주세요.",
         "쌀국수면은 미지근한 물에 10분 불려 주세요.",
-        "육수를 체에 거르고 소금과 액젓으로 간을 맞춰요.",
-        "면을 끓는 물에 30초 데쳐 그릇에 담고 육수를 부어요.",
-        "레몬즙과 고수를 곁들이면 베트남식 완성!",
+        "육수를 체에 거르고 소금과 액젓으로 간을 맞춰 주세요.",
+        "면을 끓는 물에 30초 데쳐 그릇에 담고 육수를 부어 주세요.",
+        "레몬즙과 고수를 곁들이면 베트남식 완성됩니다.",
       ],
       tip: "쌀국수면은 불린 뒤 데쳐야 부드러워요. 육수는 양파를 구워 넣어야 향이 깊어져요.",
       comment: "집에서 즐기는 베트남 한 그릇 🍜",
@@ -734,8 +888,8 @@
       req: ["barley", "rice", "buchu", "gochujang"], opt: ["egg", "carrot", "sesame_oil"],
       moods: ["light", "hearty"], budget: "low", method: "home",
       steps: [
-        "보리는 30분 불려 밥과 함께 고슬고슬하게 지어요.",
-        "부추와 당근은 잘게 썰어 참기름에 살짝 볶아요.",
+        "보리는 30분 불려 밥과 함께 고슬고슬하게 지어 주세요.",
+        "부추와 당근은 잘게 썰어 참기름에 살짝 볶아 주세요.",
         "밥을 그릇에 담고 채소를 돌려 담아 주세요.",
         "고추장과 참기름을 넣고 계란후라이를 올려 비벼 드세요.",
       ],
@@ -747,10 +901,10 @@
       req: ["oat", "milk", "banana"], opt: ["honey", "nut", "blueberry"],
       moods: ["light"], budget: "low", method: "home",
       steps: [
-        "우유 1컵을 냄비에 붓고 약불로 데워요.",
-        "오트밀 3큰술을 넣고 3분간 천천히 저어요.",
-        "바나나를 으깨 넣고 1분 더 끓이면 완성!",
-        "꿀이나 견과류를 올려 마무리해요.",
+        "우유 1컵을 냄비에 붓고 약불로 데워 주세요.",
+        "오트밀 3큰술을 넣고 3분간 천천히 저어 주세요.",
+        "바나나를 으깨 넣고 1분 더 끓이면 완성됩니다.",
+        "꿀이나 견과류를 올려 마무리해 주세요.",
       ],
       tip: "우유가 끓어 넘치지 않게 약불에서 저어 주세요. 오트밀은 1분만 더 두면 걸쭉해져요.",
       comment: "8분이면 든든한 아침 🥣",
@@ -760,11 +914,11 @@
       req: ["duck", "onion", "pa", "gochujang"], opt: ["garlic", "sugar", "sesame_oil"],
       moods: ["hearty", "night"], budget: "mid", method: "home",
       steps: [
-        "오리고기는 한입 크기로 썰어 물기를 닦아요.",
-        "고추장 2큰술, 간장 1큰술, 설탕 1큰술, 다진 마늘을 섞어요.",
+        "오리고기는 한입 크기로 썰어 물기를 닦아 주세요.",
+        "고추장 2큰술, 간장 1큰술, 설탕 1큰술, 다진 마늘을 섞어 주세요.",
         "고기에 양념을 버무려 15분 재워 주세요.",
-        "센 불에 팬을 달군 뒤 고기를 볶아요.",
-        "양파와 대파를 넣고 2분 더 볶아 완성!",
+        "센 불에 팬을 달군 뒤 고기를 볶아 주세요.",
+        "양파와 대파를 넣고 2분 더 볶아 완성됩니다.",
       ],
       tip: "오리는 기름이 많아 양파를 먼저 볶아 기름을 입히면 느끼하지 않아요.",
       comment: "밥도 술도 부르는 오리 주물럭 🦆",
@@ -775,10 +929,10 @@
       moods: ["night", "hearty"], budget: "mid", method: "home",
       steps: [
         "곱창은 밀가루로 주물러 씻고 물기를 빼 주세요.",
-        "고춧가루 2큰술, 간장 1큰술, 설탕 반 큰술로 양념을 만들어요.",
-        "센 불에 곱창을 볶아 기름을 내요.",
-        "양파와 대파, 다진 마늘을 넣고 함께 볶아요.",
-        "양념을 넣고 2분 더 볶은 뒤 참기름을 두르면 완성!",
+        "고춧가루 2큰술, 간장 1큰술, 설탕 반 큰술로 양념을 만들어 주세요.",
+        "센 불에 곱창을 볶아 기름을 내 주세요.",
+        "양파와 대파, 다진 마늘을 넣고 함께 볶아 주세요.",
+        "양념을 넣고 2분 더 볶은 뒤 참기름을 두르면 완성됩니다.",
       ],
       tip: "곱창은 밀가루로 주물러야 잡내가 빠져요. 센 불에 짧게 볶아야 질기지 않아요.",
       comment: "야식엔 역시 곱창 볶음 🍢",
@@ -788,10 +942,10 @@
       req: ["edamame", "garlic"], opt: ["salt", "sesame_oil", "gochu"],
       moods: ["light", "night"], budget: "low", method: "home",
       steps: [
-        "에다마메는 끓는 물에 소금을 넣고 3분 삶아요.",
+        "에다마메는 끓는 물에 소금을 넣고 3분 삶아 주세요.",
         "물을 버리고 찬물에 헹구지 않고 그대로 두세요.",
-        "다진 마늘과 소금, 참기름을 넣고 버무려요.",
-        "청양고추를 송송 썰어 올리면 칼칼함이 더해져요.",
+        "다진 마늘과 소금, 참기름을 넣고 버무려 주세요.",
+        "청양고추를 송송 썰어 올리면 칼칼함이 더해집니다.",
       ],
       tip: "삶은 뒤 바로 물을 빼야 콩알이 촉촉해요. 참기름은 불을 끈 뒤에 넣어야 향이 살아요.",
       comment: "한 알씩 집어 먹는 재미 🫛",
@@ -802,8 +956,8 @@
       moods: ["light"], budget: "low", method: "home",
       steps: [
         "망고는 껍질을 벗겨 한입 크기로 썰어 얼려 두세요.",
-        "믹서에 얼린 망고와 요거트, 우유를 넣어요.",
-        "30초 갈고 꿀이나 바나나를 더해 한 번 더 갈아요.",
+        "믹서에 얼린 망고와 요거트, 우유를 넣어 주세요.",
+        "30초 갈고 꿀이나 바나나를 더해 한 번 더 갈아 주세요.",
         "차가운 컵에 담아 바로 드세요.",
       ],
       tip: "과일을 얼려 쓰면 얼음을 넣지 않아도 되고 맛이 진해요. 우유를 조금씩 넣어 농도를 맞추세요.",
@@ -814,11 +968,11 @@
       req: ["chicken", "hwanggi", "garlic", "rice"], opt: ["insam", "daechu", "pa", "salt"],
       moods: ["hearty"], budget: "mid", method: "home",
       steps: [
-        "닭은 찬물에 30분 담가 핏물을 빼요.",
-        "황기와 대추, 통마늘을 냄비에 넣고 물 2L를 부어요.",
-        "닭을 넣고 끓어오르면 중불로 줄여 50분 끓여요.",
-        "찹쌀이나 밥을 넣고 10분 더 끓이면 걸쭉해져요.",
-        "소금으로 간을 맞추고 대파를 올려 마무리해요.",
+        "닭은 찬물에 30분 담가 핏물을 빼 주세요.",
+        "황기와 대추, 통마늘을 냄비에 넣고 물 2L를 부어 주세요.",
+        "닭을 넣고 끓어오르면 중불로 줄여 50분 끓여 주세요.",
+        "찹쌀이나 밥을 넣고 10분 더 끓이면 걸쭉해집니다.",
+        "소금으로 간을 맞추고 대파를 올려 마무리해 주세요.",
       ],
       tip: "황기는 오래 끓일수록 구수한 향이 우러나요. 닭은 젓가락이 쑥 들어가면 다 익은 거예요.",
       comment: "기운 나는 날의 보양식 🍲",
@@ -828,11 +982,11 @@
       req: ["cucumber", "brown_vinegar", "sugar"], opt: ["gochugaru", "garlic", "sesame"],
       moods: ["light", "hangover"], budget: "low", method: "home",
       steps: [
-        "오이는 어슷하게 썰어 소금에 5분 절여요.",
-        "물기를 꼭 짜고 그릇에 담아요.",
-        "현미식초 2큰술, 설탕 1큰술, 소금 한 꼬집을 섞어 부어요.",
-        "고춧가루와 다진 마늘을 넣고 조물조물 버무려요.",
-        "통깨를 뿌려 마무리하면 완성!",
+        "오이는 어슷하게 썰어 소금에 5분 절여 주세요.",
+        "물기를 꼭 짜고 그릇에 담아 주세요.",
+        "현미식초 2큰술, 설탕 1큰술, 소금 한 꼬집을 섞어 부어 주세요.",
+        "고춧가루와 다진 마늘을 넣고 조물조물 버무려 주세요.",
+        "통깨를 뿌려 마무리하면 완성됩니다.",
       ],
       tip: "현미식초는 양조식초보다 향이 부드러워 초무침에 잘 어울려요. 절인 오이 물기를 빼야 묽지 않아요.",
       comment: "입맛 돋우는 새콤한 반찬 🥒",
@@ -939,6 +1093,8 @@
     spinning: false,
     lastPick: null,
     drawerDish: null,
+    favView: null,       // null | "fav" | "recent"
+    serving: {},         // 레시피 id → 고른 인분 수
   };
 
   var MOODS = [
@@ -1081,6 +1237,17 @@
   }
 
   function buildRows() {
+    if (state.favView) {
+      var ids = state.favView === "fav" ? favIds : recentIds;
+      var rows = [];
+      ids.forEach(function (id) {
+        var d = findDish(id);
+        if (!d) return;
+        rows.push({ dish: d, hit: [], missing: [], bonus: [], percent: 0, ready: false });
+      });
+      return rows;
+    }
+
     var q = normalize(state.query);
     var pool = HOME_RECIPES;
 
@@ -1266,6 +1433,7 @@
   }
 
   function toggleIngredient(id) {
+    exitFavView();
     var i = state.selected.indexOf(id);
     if (i === -1) state.selected.push(id);
     else state.selected.splice(i, 1);
@@ -1333,6 +1501,7 @@
       btn.addEventListener("click", function () {
         state.cat = c.id;
         state.visible = 24;
+        exitFavView();
         renderCatPills();
         renderResults();
         save();
@@ -1350,12 +1519,38 @@
     state.visible = 24;
     renderHead();
     paintList();
+    renderQuickBar();
+  }
+
+  function renderQuickBar() {
+    if (el.favCount) el.favCount.textContent = favIds.length;
+    if (el.recentCount) el.recentCount.textContent = recentIds.length;
+    if (el.favBtn) el.favBtn.setAttribute("aria-pressed", state.favView === "fav" ? "true" : "false");
+    if (el.recentBtn) el.recentBtn.setAttribute("aria-pressed", state.favView === "recent" ? "true" : "false");
+  }
+
+  function setFavView(view) {
+    state.favView = state.favView === view ? null : view;
+    if (state.favView) {
+      state.query = "";
+      if (el.searchInput) el.searchInput.value = "";
+      if (el.searchClear) el.searchClear.classList.add("hidden");
+      state.cat = "all";
+      renderCatPills();
+    }
+    renderResults();
   }
 
   function renderHead() {
     var n = state.rows.length;
     var title, sub = "";
-    if (state.selected.length) {
+    if (state.favView === "fav") {
+      title = "찜한 메뉴";
+      sub = n + "개";
+    } else if (state.favView === "recent") {
+      title = "최근 본 메뉴";
+      sub = n + "개";
+    } else if (state.selected.length) {
       title = "내 재료로 만드는 요리";
       sub = n + "개 찾음";
     } else if (state.query) {
@@ -1377,12 +1572,16 @@
     list.innerHTML = "";
 
     if (!state.rows.length) {
-      renderEmpty();
+      if (state.favView) {
+        renderFavEmpty();
+      } else {
+        renderEmpty();
+      }
       return;
     }
 
     // 처음 방문(필터 없음)일 때만 빠른 시작 카드
-    if (!state.selected.length && !state.query && state.cat === "all") {
+    if (!state.favView && !state.selected.length && !state.query && state.cat === "all") {
       renderStartCard(list);
     }
 
@@ -1454,6 +1653,7 @@
     var quick = $("#quickStart", box);
     if (!quick) return;
     quick.addEventListener("click", function () {
+      exitFavView();
       state.selected = ["egg", "kimchi", "rice", "pa"];
       renderChips();
       renderSelectedChips();
@@ -1462,6 +1662,20 @@
       save();
       toast("자주 있는 재료 4개를 골랐어요");
     });
+  }
+
+  function renderFavEmpty() {
+    var box = document.createElement("div");
+    box.className = "empty compact";
+    var fav = state.favView === "fav";
+    box.innerHTML =
+      '<span class="e-emoji">' + (fav ? "🤍" : "🕘") + "</span>" +
+      "<h3>" + (fav ? "아직 찜한 메뉴가 없어요" : "아직 본 메뉴가 없어요") + "</h3>" +
+      "<p>" + (fav
+        ? "마음에 드는 레시피의 하트를 눌러 두면 여기에 모여요."
+        : "레시피를 열어 보면 최근 본 메뉴 12개까지 여기에 남아요.") +
+      "</p>";
+    el.dishList.appendChild(box);
   }
 
   function renderEmpty() {
@@ -1477,12 +1691,14 @@
 
   function dishNode(row, index, showMatch) {
     var d = row.dish;
-    var card = document.createElement("button");
-    card.type = "button";
+    var card = document.createElement("div");
     card.className = "dish" + (row.ready ? " is-ready" : "");
+    card.setAttribute("role", "button");
+    card.setAttribute("tabindex", "0");
     if (index < 12) card.style.animationDelay = Math.min(index * 0.035, 0.25) + "s";
     card.setAttribute("aria-label", d.name + " 레시피 보기");
 
+    var liked = isFav(d.id);
     var html = "";
     html += '<div class="dish-top">';
     html += '<div class="dish-thumb">' + d.emoji + "</div>";
@@ -1492,7 +1708,6 @@
     html += "</div>";
     html += '<div class="dish-meta"><span class="cat-tag">' + escapeHtml(d.cat) + "</span>";
     html += "<span>⏱ " + formatTime(d.time) + "</span><i>·</i><span>" + levelText(d.level) + "</span>";
-    if (d.reviews >= 30) html += "<i>·</i><span>후기 " + d.reviews + "</span>";
     html += "</div></div>";
 
     if (showMatch) {
@@ -1501,6 +1716,10 @@
       html += '<div class="match-bar"><i style="width:' + row.percent + '%"></i></div>';
       html += "</div>";
     }
+    html += '<button type="button" class="fav-btn' + (liked ? " is-on" : "") +
+      '" data-fav="' + escapeHtml(d.id) + '" aria-pressed="' + (liked ? "true" : "false") +
+      '" aria-label="' + (liked ? "찜 해제" : "찜하기") + '">' +
+      (liked ? "❤️" : "🤍") + "</button>";
     html += "</div>";
 
     if (d.req.length) {
@@ -1540,6 +1759,27 @@
 
     card.innerHTML = html;
     card.addEventListener("click", function () { openDrawer(d); });
+    card.addEventListener("keydown", function (event) {
+      if (event.key === "Enter" || event.key === " ") {
+        event.preventDefault();
+        openDrawer(d);
+      }
+    });
+    var heart = $(".fav-btn", card);
+    if (heart) {
+      heart.addEventListener("click", function (event) {
+        event.stopPropagation();
+        event.preventDefault();
+        var on = toggleFav(d.id);
+        heart.classList.toggle("is-on", on);
+        heart.textContent = on ? "❤️" : "🤍";
+        heart.setAttribute("aria-pressed", on ? "true" : "false");
+        heart.setAttribute("aria-label", on ? "찜 해제" : "찜하기");
+        toast(on ? "찜했어요 · 찜한 메뉴에서 다시 볼 수 있어요" : "찜을 해제했어요");
+        renderQuickBar();
+        if (state.favView === "fav") renderResults();
+      });
+    }
     return card;
   }
 
@@ -1857,9 +2097,83 @@
   /* ------------------------------------------------------------------
      11. 레시피 드로어
      ------------------------------------------------------------------ */
+  function coupangLink(label) {
+    var base = CFG.coupangSearchBase || "https://www.coupang.com/np/search?q=";
+    var url = base + encodeURIComponent(label);
+    if (CFG.coupangPartnersEnabled && CFG.coupangPartnersTag) {
+      url += (url.indexOf("?") === -1 ? "?" : "&") + "lptag=" + encodeURIComponent(CFG.coupangPartnersTag);
+    }
+    return url;
+  }
+
+  function currentServing(dish) {
+    var chosen = state.serving[dish.id];
+    if (chosen) return chosen;
+    return baseServings(dish);
+  }
+
+  function servingsHtml(dish) {
+    var target = currentServing(dish);
+    var base = baseServings(dish);
+    var html = '<div class="srv-row" role="group" aria-label="인분 수 조절">';
+    html += '<span class="srv-label">인분 수</span>';
+    SERVING_CHOICES.forEach(function (n) {
+      html += '<button type="button" class="srv-chip' + (n === target ? " is-on" : "") +
+        '" data-srv="' + n + '" aria-pressed="' + (n === target ? "true" : "false") + '">' +
+        n + "인분</button>";
+    });
+    html += "</div>";
+    html += '<p class="srv-note">' + (base === target
+      ? "기본 " + base + "인분 분량이에요"
+      : "기본 " + base + "인분 → " + target + "인분으로 환산했어요") + "</p>";
+    return html;
+  }
+
+  function ingredientListHtml(dish, has) {
+    var target = currentServing(dish);
+    var html = '<ul class="ing-list">';
+    dish.ing.forEach(function (row) {
+      var name = row[0], amt = row[1] || "", id = row[2] || "";
+      var ok = has(id);
+      var shownAmt = servingAmount(row, dish, target);
+      html += '<li class="' + (ok ? "is-on" : "") + '">' +
+        '<span class="ing-tick">' + (ok ? "✓" : "·") + "</span>" +
+        '<span class="ing-name">' + escapeHtml(name) + "</span>" +
+        '<span class="ing-amt">' + escapeHtml(shownAmt) + "</span></li>";
+    });
+    html += "</ul>";
+    return html;
+  }
+
+  function missingBoxHtml(dish, missing) {
+    if (!missing.length) return "";
+    var html = '<div class="drawer-section"><h3>🛒 부족한 재료</h3>';
+    html += '<p class="miss-note">' + missing.map(ingLabel).join(", ") + "만 더 있으면 돼요.</p>";
+    html += '<div class="buy-row">';
+    missing.slice(0, 4).forEach(function (id) {
+      var label = ingLabel(id);
+      html += '<a class="buy-chip" href="' + escapeHtml(coupangLink(label)) +
+        '" target="_blank" rel="noopener noreferrer sponsored">🛒 ' + escapeHtml(label) + "</a>";
+    });
+    html += "</div>";
+    var first = ingLabel(missing[0]);
+    html += '<a class="buy-main" href="' + escapeHtml(coupangLink(first)) +
+      '" target="_blank" rel="noopener noreferrer sponsored">🛒 부족한 재료 쿠팡에서 찾기</a>';
+    if (CFG.coupangPartnersEnabled && CFG.coupangPartnersTag) {
+      html += '<p class="ad-disclosure">' + escapeHtml(CFG.coupangDisclosure) + "</p>";
+    }
+    html += "</div>";
+    return html;
+  }
+
   function openDrawer(dish) {
     state.drawerDish = dish;
     var has = function (id) { return !!id && state.selected.indexOf(id) !== -1; };
+    var liked = isFav(dish.id);
+
+    // 최근 본 메뉴에 남긴다 (로그인 없이 브라우저에만)
+    pushRecent(dish.id);
+    renderQuickBar();
 
     var html = "";
     html += '<div class="drawer-grip"></div>';
@@ -1869,31 +2183,26 @@
     html += '<div class="drawer-title" id="drawerTitle">' + escapeHtml(dish.name) + "</div>";
     html += '<div class="drawer-sub">' + escapeHtml(drawerSub(dish)) + "</div>";
     html += "</div>";
+    html += '<button type="button" class="fav-btn drawer-fav' + (liked ? " is-on" : "") +
+      '" data-fav="' + escapeHtml(dish.id) + '" aria-pressed="' + (liked ? "true" : "false") +
+      '" aria-label="' + (liked ? "찜 해제" : "찜하기") + '">' + (liked ? "❤️" : "🤍") + "</button>";
     html += '<button type="button" class="drawer-close" aria-label="닫기" data-act="close">✕</button>';
     html += "</div>";
     html += '<div class="drawer-body">';
 
     if (dish.method === "home") {
+      html += servingsHtml(dish);
+
       html += '<div class="drawer-section"><h3>재료' +
-        (dish.servings ? ' <small>' + escapeHtml(dish.servings) + " 기준</small>" : "") +
-        "</h3>";
+        ' <small class="srv-target">' + currentServing(dish) + "인분 기준</small></h3>";
       if (state.selected.length) {
         var mine = 0;
         dish.req.forEach(function (id) { if (has(id)) mine++; });
         html += '<p class="drawer-match">내 재료로 <b>' + mine + " / " + dish.req.length +
           "</b> 준비됨</p>";
       }
-      html += '<ul class="ing-list">';
-      dish.ing.forEach(function (row) {
-        var name = row[0], amt = row[1] || "", id = row[2] || "";
-        var ok = has(id);
-        var essential = id && dish.req.indexOf(id) !== -1;
-        html += '<li class="' + (ok ? "is-on" : "") + '">' +
-          '<span class="ing-tick">' + (ok ? "✓" : "·") + "</span>" +
-          '<span class="ing-name">' + escapeHtml(name) + "</span>" +
-          '<span class="ing-amt">' + escapeHtml(amt) + (essential ? "" : "") + "</span></li>";
-      });
-      html += "</ul></div>";
+      html += ingredientListHtml(dish, has);
+      html += "</div>";
 
       if (dish.steps.length) {
         html += '<div class="drawer-section"><h3>만드는 법</h3><ol class="steps">';
@@ -1902,6 +2211,9 @@
         });
         html += "</ol></div>";
       }
+
+      var missing = dish.req.filter(function (id) { return !has(id); });
+      html += missingBoxHtml(dish, missing);
     } else {
       html += '<div class="drawer-section"><h3>배달·외식 메뉴</h3>';
       html += '<div class="price-card">';
@@ -1923,14 +2235,6 @@
       var tipTitle = dish.method === "out" ? "💡 주문 팁" : "💡 요리 팁";
       html += '<div class="tip-box"><b>' + tipTitle + "</b> " + escapeHtml(dish.tip) + "</div>";
     }
-
-    if (dish.src) {
-      html += '<div class="source-box">' +
-        '<a href="' + escapeHtml(dish.src) + '" target="_blank" rel="noopener noreferrer">' +
-        "만개의레시피 원문 보기 ↗</a>" +
-        (dish.author ? '<span class="src-author">' + escapeHtml(dish.author) + "</span>" : "") +
-        "</div>";
-    }
     html += "</div>";
 
     html += '<div class="drawer-foot">';
@@ -1947,6 +2251,35 @@
     });
     var shareBtn = el.drawerPanel.querySelector('[data-act="share"]');
     if (shareBtn) shareBtn.addEventListener("click", function () { sharePick(dish); });
+
+    var heart = el.drawerPanel.querySelector(".drawer-fav");
+    if (heart) {
+      heart.addEventListener("click", function () {
+        var on = toggleFav(dish.id);
+        heart.classList.toggle("is-on", on);
+        heart.textContent = on ? "❤️" : "🤍";
+        heart.setAttribute("aria-pressed", on ? "true" : "false");
+        heart.setAttribute("aria-label", on ? "찜 해제" : "찜하기");
+        toast(on ? "찜했어요 · 찜한 메뉴에서 다시 볼 수 있어요" : "찜을 해제했어요");
+        renderQuickBar();
+        if (state.favView === "fav") renderResults();
+      });
+    }
+
+    // 인분 수를 바꾸면 재료 분량만 다시 그린다
+    Array.prototype.forEach.call(el.drawerPanel.querySelectorAll("[data-srv]"), function (btn) {
+      btn.addEventListener("click", function () {
+        var n = Number(btn.dataset.srv);
+        if (!n) return;
+        state.serving[dish.id] = n;
+        var body = el.drawerPanel.querySelector(".drawer-body");
+        var keep = body ? body.scrollTop : 0;
+        openDrawer(dish);
+        var next = el.drawerPanel.querySelector(".drawer-body");
+        if (next) next.scrollTop = keep;
+      });
+    });
+
     el.drawerPanel.querySelector(".drawer-body").scrollTop = 0;
 
     var closeBtn = el.drawerPanel.querySelector(".drawer-close");
@@ -1993,6 +2326,66 @@
   }
 
   /* ------------------------------------------------------------------
+     12-1. 수익화 (설정이 채워졌을 때만)
+     ------------------------------------------------------------------ */
+  function initMonetization() {
+    var ga = CFG.gaMeasurementId;
+    if (/^G-[A-Z0-9]+$/i.test(ga || "")) {
+      var gaScript = document.createElement("script");
+      gaScript.async = true;
+      gaScript.src = "https://www.googletagmanager.com/gtag/js?id=" + encodeURIComponent(ga);
+      document.head.appendChild(gaScript);
+      window.dataLayer = window.dataLayer || [];
+      window.gtag = function () { window.dataLayer.push(arguments); };
+      window.gtag("js", new Date());
+      window.gtag("config", ga);
+    }
+
+    var slot = el.adSlot;
+    if (!slot) return;
+
+    // Google AdSense
+    if (CFG.adsenseClient && CFG.adsenseSlot) {
+      slot.classList.remove("hidden");
+      slot.removeAttribute("aria-hidden");
+      slot.innerHTML = '<span class="ad-label">AD</span>' +
+        '<ins class="adsbygoogle" style="display:block" data-ad-client="' +
+        escapeHtml(CFG.adsenseClient) + '" data-ad-slot="' + escapeHtml(CFG.adsenseSlot) +
+        '" data-ad-format="auto" data-full-width-responsive="true"></ins>';
+      var adScript = document.createElement("script");
+      adScript.async = true;
+      adScript.crossOrigin = "anonymous";
+      adScript.src = "https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=" +
+        encodeURIComponent(CFG.adsenseClient);
+      adScript.onload = function () {
+        try { (window.adsbygoogle = window.adsbygoogle || []).push({}); } catch (e) { /* 무시 */ }
+      };
+      document.head.appendChild(adScript);
+      return;
+    }
+
+    // 카카오 AdFit
+    if (CFG.adfitUnit) {
+      slot.classList.remove("hidden");
+      slot.removeAttribute("aria-hidden");
+      slot.innerHTML = '<span class="ad-label">AD</span>' +
+        '<ins class="kakao_ad_area" style="display:none;" data-ad-unit="' +
+        escapeHtml(CFG.adfitUnit) + '" data-ad-width="320" data-ad-height="100"></ins>';
+      var adfitScript = document.createElement("script");
+      adfitScript.async = true;
+      adfitScript.src = "https://t1.daumcdn.net/kas/static/ba.min.js";
+      document.head.appendChild(adfitScript);
+    }
+  }
+
+  function exitFavView() {
+    if (state.favView) {
+      state.favView = null;
+      renderQuickBar();
+    }
+  }
+
+  /* ------------------------------------------------------------------
      13. 초기화
      ------------------------------------------------------------------ */
   function init() {
@@ -2032,8 +2425,14 @@
     el.drawerPanel = $("#drawerPanel");
     el.toast = $("#toast");
     el.tabs = Array.prototype.slice.call(document.querySelectorAll(".tab"));
+    el.favBtn = $("#favBtn");
+    el.recentBtn = $("#recentBtn");
+    el.favCount = $("#favCount");
+    el.recentCount = $("#recentCount");
+    el.adSlot = $("#adSlot");
 
     load();
+    loadUserLists();
 
     if (el.ingSearch) {
       var ingTimer = null;
@@ -2095,6 +2494,7 @@
         if (searchTimer) clearTimeout(searchTimer);
         searchTimer = setTimeout(function () {
           state.query = value.trim();
+          if (state.query) exitFavView();
           if (el.searchClear) el.searchClear.classList.toggle("hidden", !state.query);
           renderResults();
         }, 140);
@@ -2113,6 +2513,13 @@
     el.tabs.forEach(function (btn) {
       btn.addEventListener("click", function () { setTab(btn.dataset.view); });
     });
+
+    if (el.favBtn) {
+      el.favBtn.addEventListener("click", function () { setFavView("fav"); });
+    }
+    if (el.recentBtn) {
+      el.recentBtn.addEventListener("click", function () { setFavView("recent"); });
+    }
 
     el.spinBtn.addEventListener("click", spin);
 
@@ -2142,7 +2549,9 @@
     renderPoolHint();
     setReel(null);
     renderResults();
+    renderQuickBar();
     setTab(state.tab);
+    initMonetization();
 
     el.result.classList.add("hidden");
 

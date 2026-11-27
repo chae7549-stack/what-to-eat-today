@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://chae7549-stack.github.io/what-to-eat-today/sitemap.xml
