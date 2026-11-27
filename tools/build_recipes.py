@@ -381,7 +381,9 @@ def build():
             cat = "양식·기타"
 
         # --- 제목·조리 순서를 표준 문장으로 다시 쓴다 ---
-        title = RW.clean_title(raw_name) or fallback_name(req, cat)
+        title = RW.clean_title(raw_name)
+        if not title or not any(RW._is_dish(w) for w in title.split()):
+            title = fallback_name(req, cat)
         steps = RW.rewrite_steps(raw_steps)
         if len(steps) < 2 or sum(len(x) for x in steps) < 40:
             dropped["조리순서 빈약"] += 1
