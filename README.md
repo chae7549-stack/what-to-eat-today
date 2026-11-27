@@ -5,6 +5,11 @@
 
 👉 **바로 쓰기: <https://chae7549-stack.github.io/what-to-eat-today/>**
 
+<p align="center">
+  <img src="docs/shot-fridge.png" width="46%" alt="냉장고 재료 매칭 화면" />
+  <img src="docs/shot-roulette.png" width="46%" alt="오늘 뭐 먹지 룰렛 결과 화면" />
+</p>
+
 - 설치 없이 브라우저에서 바로 열립니다.
 - iPhone·Android 홈 화면에 추가하면 앱처럼 전체 화면으로 실행됩니다(PWA).
 - **57가지 메뉴**(집밥 42 · 배달·외식 15) · 29가지 재료 · 요리별 3~4단계 레시피 수록.
@@ -68,6 +73,7 @@ what-to-eat-today/
 ├── manifest.webmanifest    # PWA 매니페스트
 ├── sw.js                   # 서비스 워커 (오프라인 캐시)
 ├── icons/                  # SVG·PNG 아이콘 (192, 512, maskable, apple-touch)
+├── docs/                   # README용 스크린샷
 └── tools/
     ├── make_icons.py       # 아이콘 PNG 생성 스크립트
     ├── check_logic.py      # 요리 데이터·매칭·룰렛 로직 점검
