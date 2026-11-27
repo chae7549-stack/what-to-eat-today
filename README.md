@@ -7,7 +7,11 @@
 
 <p align="center">
   <img src="docs/shot-fridge.png" width="46%" alt="냉장고 재료 매칭 화면" />
-  <img src="docs/shot-roulette.png" width="46%" alt="오늘 뭐 먹지 룰렛 결과 화면" />
+  <img src="docs/shot-ingredients.png" width="46%" alt="장류·소스 세분화 재료 탭" />
+</p>
+<p align="center">
+  <img src="docs/shot-recipes.png" width="46%" alt="재료 매칭 결과 카드" />
+  <img src="docs/shot-roulette.png" width="46%" alt="배달·외식 룰렛 결과" />
 </p>
 
 - 설치 없이 브라우저에서 바로 열립니다.
@@ -29,6 +33,8 @@
   - 양념·향신: 고춧가루·설탕·올리고당·꿀·매실청·맛술·깨·다시다·치킨스톡·전분·베이킹파우더 …
 - **재료 빠른 검색** — `냉장고에 뭐가 있나요?` 카드 안에서 "발사믹", "고추장"처럼 바로 찾아요
 - 고른 재료는 카드 위 **`내가 고른 재료` 줄**에 모여 보여서, 그룹을 옮겨 다녀도 한눈에 확인·해제할 수 있어요
+
+<p align="center"><img src="docs/shot-ingredients.png" width="52%" alt="장류·소스 22종" /></p>
 - 목록에 없는 재료는 **직접 입력**(예: 베이컨, 다진 마늘 → 자동으로 기존 재료와 연결)
 - 보유 재료 기준 **매칭률(%)** 순으로 요리 정렬, `바로 가능` 배지 표시
 - 부족한 재료를 `+ 대파`처럼 표시해서 **딱 무엇만 사면 되는지** 한눈에 보여요
